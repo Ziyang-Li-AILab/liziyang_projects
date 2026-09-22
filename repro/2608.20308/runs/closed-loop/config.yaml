@@ -1,0 +1,172 @@
+name: closed-loop
+seed: 42
+base_options: ../../code/options/ace_ego_hand_k.yml
+kfree: false
+paths:
+  mano_dir: /home/remote/Desktop/liziyang_projects/repro/2608.20308/code/data/mano
+  out_root: /home/remote/Desktop/liziyang_projects/repro/2608.20308/runs
+  data_root: /home/remote/Desktop/liziyang_projects/repro/2608.20308/data
+  latent_cache: /home/remote/Desktop/liziyang_projects/repro/2608.20308/data/latents
+data:
+  sources:
+    arctic:
+      weight: 14
+      kind: video
+      res:
+      - 672
+      - 480
+      mano: true
+      camera: pinhole
+    hot3d:
+      weight: 18
+      kind: video
+      res:
+      - 480
+      - 480
+      mano: true
+      camera: pinhole
+    h2o:
+      weight: 10
+      kind: video
+      res:
+      - 832
+      - 480
+      mano: true
+      camera: pinhole
+    oakink2:
+      weight: 14
+      kind: video
+      res:
+      - 832
+      - 480
+      mano: true
+      camera: pinhole
+    reinterhand:
+      weight: 16
+      kind: video
+      res:
+      - 480
+      - 480
+      mano: true
+      camera: fisheye
+    freihand:
+      weight: 14
+      kind: static
+      res:
+      - 224
+      - 224
+      mano: true
+      camera: pinhole
+    rhd:
+      weight: 14
+      kind: static
+      res:
+      - 320
+      - 320
+      mano: false
+      camera: pinhole
+  video_frames: 81
+  static_frames: 5
+  span_dropout: 0.0
+  num_workers: 4
+  synthetic:
+    n_train: 64
+    n_val: 8
+    res:
+    - 480
+    - 480
+    video_frames: 21
+batch:
+  clips_per_gpu: 2
+  gpus: 16
+  grad_accum: 1
+optimizer:
+  name: AdamW
+  lr_decoder: 0.0002
+  lr_lora: 0.0001
+  lr_patch_embed: 2.0e-05
+  weight_decay: 0.01
+  betas:
+  - 0.9
+  - 0.999
+  eps: 1.0e-08
+  grad_clip: 1.0
+schedule:
+  total_steps: 2
+  warmup_steps: 1
+  warmup_type: linear
+  decay: cosine
+  min_lr_ratio: 0.0
+  fit_warmup_steps: 500
+  log_every: 10
+  eval_every: 500
+  save_every: 500
+loss:
+  rot_geodesic: 1.0
+  rot_mse: 1.0
+  betas_l1: 0.1
+  joint_rootrel: 10.0
+  joint_cam: 5.0
+  wrist_cam: 2.0
+  img_joints2d: 1.0
+  img_reproj: 1.0
+  img_wrist2d: 0.5
+  cam_trans: 1.0
+  presence_3d: 0.5
+  presence_2d: 0.25
+  temporal_accel: 0.5
+  ray_cosine: 1.0
+  fit_bearing: 0.0
+precision:
+  backbone_dtype: bfloat16
+  autocast: bfloat16
+eval:
+  penalty_mm: 1000.0
+  jitter_fps: 30
+  pa_align: procrustes
+model:
+  name: ace_ego_hand_k
+  device: cuda
+  seed: 42
+  paths:
+    model_root: /home/remote/Desktop/liziyang_projects/repro/2608.20308/code/ckpt/Wan2.2-Fun-5B-Control
+    videox_config: /home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/config/wan2.2/wan_civitai_5b.yaml
+    caption_embed: /home/remote/Desktop/liziyang_projects/repro/2608.20308/code/cache/caption_embed.pt
+  backbone:
+    tap_layers:
+    - 15
+    mh_expand: false
+    train_backbone: true
+    gradient_checkpointing: true
+    feature_mode: noised_video
+    nv_sigma: 0.0
+    lora:
+      lora_rank: 64
+      lora_alpha: 64
+      lora_dropout: 0.0
+    raymap: true
+    self_ray_pe: true
+  projector:
+    hidden_dim: 384
+    num_temporal_layers: 4
+    num_heads: 8
+    ffn_mult: 4
+    dropout: 0.0
+    max_spatial_tokens: 4096
+    max_video_frames: 256
+    cam_trans_decode: mixed_pnp
+    spatial_pe_mode: interp2d
+    betas_scope: per_hand
+    per_hand_betas_source: slot_mean
+    spatial_pool_mode: slot
+    num_direct_joints: 21
+    joints2d_readout: pooled
+    temporal_arch: alternating
+    alt_num_register: 4
+    alt_num_layers: 4
+    alt_query_mode: joint
+    alt_temporal_rope: true
+    alt_mem_tokens: 0
+    use_ray_pe: true
+    ray_pe_n_freqs: 8
+_config_path: /home/remote/Desktop/liziyang_projects/repro/2608.20308/src/configs/repro-default.yaml

@@ -1,0 +1,100 @@
+{
+  "hand_model": "fake",
+  "ckpt": "/home/remote/Desktop/liziyang_projects/repro/2608.20308/runs/closed-loop/ckpt_infer.pt",
+  "pred": "/home/remote/Desktop/liziyang_projects/repro/2608.20308/runs/closed-loop/infer_pred.pt",
+  "clip_id": "synthetic_val_43_0000",
+  "shapes": {
+    "go": [
+      21,
+      2,
+      1,
+      3,
+      3
+    ],
+    "hp": [
+      21,
+      2,
+      15,
+      3,
+      3
+    ],
+    "global_orient": [
+      21,
+      2,
+      3,
+      3
+    ],
+    "hand_pose": [
+      21,
+      2,
+      15,
+      3,
+      3
+    ],
+    "betas": [
+      21,
+      2,
+      10
+    ],
+    "cam_trans": [
+      21,
+      2,
+      3
+    ],
+    "exists_2d": [
+      21,
+      2
+    ],
+    "exists_3d": [
+      21,
+      2
+    ],
+    "presence": [
+      21,
+      2
+    ],
+    "direct_joints_rootrel": [
+      21,
+      2,
+      21,
+      3
+    ],
+    "direct_wrist_cam": [
+      21,
+      2,
+      3
+    ],
+    "direct_joints_cam": [
+      21,
+      2,
+      21,
+      3
+    ],
+    "direct_joints2d": [
+      21,
+      2,
+      21,
+      2
+    ],
+    "is_right": [
+      21,
+      2
+    ],
+    "shape_token": [
+      384
+    ],
+    "segment_betas": [
+      2,
+      10
+    ]
+  },
+  "cam_trans_wrist0": [
+    0.0011,
+    -0.0011,
+    0.5023
+  ],
+  "train_losses": [
+    6.874,
+    5.9929
+  ]
+}
