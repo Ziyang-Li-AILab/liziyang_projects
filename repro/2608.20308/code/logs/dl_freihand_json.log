@@ -1,0 +1,10 @@
+central directory: 166772 entries, 15.9 MB at 3865949777
+fetching training_K.json (0.7 MB compressed)
+  -> data/freihand/raw/training_K.json (2.8 MB)
+fetching training_mano.json (18.6 MB compressed)
+  -> data/freihand/raw/training_mano.json (41.9 MB)
+fetching training_scale.json (0.3 MB compressed)
+  -> data/freihand/raw/training_scale.json (0.7 MB)
+fetching training_xyz.json (19.2 MB compressed)
+  -> data/freihand/raw/training_xyz.json (45.2 MB)
+done

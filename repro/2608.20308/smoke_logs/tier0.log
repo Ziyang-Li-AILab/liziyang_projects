@@ -1,0 +1,7 @@
+# smoke tier 0  config=/home/remote/Desktop/liziyang_projects/repro/2608.20308/src/configs/repro-default.yaml kfree=False 2026-09-21 21:23:09
+hand model: fake
+camera fit round trip: max |K_hat-K| = 0.0001 px, valid=[True, True]
+VAE encode 21x480x480 -> latent (48, 6, 30, 30) torch.float16 in 0.3s; std=1.454 finite=True
+loss on GT-as-prediction: {"rot_geodesic": 0.00142, "rot_mse": 0.0, "betas_l1": 0.0, "joint_rootrel": 0.0, "joint_cam": 0.0, "wrist_cam": 0.0, "img_joints2d": 0.0, "img_reproj": 0.0, "img_wrist2d": 0.0, "cam_trans": 0.0, "presence_3d": 0.01005, "presence_2d": 0.01005, "temporal_accel": 0.0, "ray_cosine": -0.0}
+metrics on GT-as-prediction: {"FAcc": 1.0, "Recall": 1.0, "F1": 1.0, "TP": 73, "FP": 0, "FN": 0, "MPJPE-p": 0.0, "PA-p": 0.0, "EPE2D-p": 0.0, "GO-p": 0.0114, "CT-p": 0.0, "Jitter": 19.5213, "MPJPE_OOS": 0.0, "MPJPE_IV": 0.0, "MPJPE_+OOS": 0.0, "n_IV": 73, "n_OOS": 11}
+TIER 0 PASS

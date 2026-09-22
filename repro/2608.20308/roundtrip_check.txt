@@ -1,0 +1,25 @@
+TALLY tagged rows=129 paper=87 code=51 both=30 framework=2 guess_rows=30 (23%) guess_tag_occurrences=35
+SCOPED numeric tokens checked=150; not found in cited section=9
+  guess-row 'Fit guards'                                     token   '0.35' not in App. B/App. B.1
+  guess-row 'Fit guards'                                     token    '110' not in App. B/App. B.1
+  CHECK     'Mixed-PnP'                                      token   '0.05' not in App. B/App. B.1/§3.3
+  CHECK     'Row acceptance'                                 token   '25x2' not in App. B/App. B.1
+  CHECK     'Validation cadence'                             token    '500' not in App. D
+  guess-row 'FreiHAND / RHD'                                 token    '224' not in App. A/App. A.2
+  guess-row 'FreiHAND / RHD'                                 token '224x224' not in App. A/App. A.2
+  guess-row 'FreiHAND / RHD'                                 token    '320' not in App. A/App. A.2
+  guess-row 'FreiHAND / RHD'                                 token '320x320' not in App. A/App. A.2
+
+Disposition of the 9 residual flags (manual review, 2026-09-21):
+  Fit guards 0.35 / 110         -> [guess]-tagged bracket values in the same row; paper gives no number (expected).
+  Mixed-PnP 0.05                -> unit conversion of "at least 5 cm" (App. B.1 / code _PNP_Z_NEAR = 0.05). OK.
+  Row acceptance 25x2           -> tokenizer artifact of "0.25 x 2D bbox diagonal"; paper says "a quarter of the hand's 2D bounding-box diagonal". OK.
+  Validation cadence 500        -> computed: 31 checkpoints between 5k and 20k => 500-step spacing; row is labelled "computed". OK.
+  FreiHAND / RHD 224 / 320      -> native dataset image sizes, part of a [guess]-tagged resolution row; not claimed from the paper. OK.
+Attribution fixes applied to gaps_filled.md during the check (first pass flagged 24 tokens):
+  - 148 input channels: was cited to Sec. 3.1, now App. B.1 (100 control channels = 148-48, from code).
+  - decoder width 384 in the Ray PE row: added Sec. 3.2 citation (App. B.1 only says "decoder width").
+  - 21 joints in the wrist-relative MLP row: now Sec. 3 intro + code (num_direct_joints).
+  - 21/81 frames in the temporal-upsampling row: added Sec. 3.1 citation.
+  Other first-pass flags were normaliser artifacts (LaTeX "1\times 1", "2{\times}10^{-4}") or Table 2 being placed in App. A.2; verified by hand against main.tex lines 197, 565 and 530-548.
+Tools: /tmp/roundtrip.py (not kept in repo). The paper-verification skill named in 03-gap-analysis.md is not installed here, so this scripted check replaces it.

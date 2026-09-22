@@ -1,0 +1,44 @@
+# smoke tier 1  config=/home/remote/Desktop/liziyang_projects/repro/2608.20308/src/configs/repro-default.yaml kfree=False 2026-09-22 08:28:36
+Your transformers version is too old to load Mistral3Model and Ministral3ForCausalLM. If you wish to use ErnieImage, please upgrade your transformers package to the latest version.
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/dist/flashhead_xfuser.py:22: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/dist/infinitalk_xfuser.py:22: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/dist/wan_xfuser.py:24: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/dist/wan_xfuser.py:66: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/dist/wan_xfuser.py:165: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/models/wan_transformer3d.py:56: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/models/wan_transformer3d.py:81: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/models/wan_transformer3d.py:143: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/models/wan_transformer3d_self_forcing.py:43: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/models/wan_audio_injector.py:103: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/models/wan_audio_injector.py:114: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/models/wan_transformer3d_s2v.py:55: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @amp.autocast(enabled=False)
+loaded 3D transformer's pretrained weights from /home/remote/Desktop/liziyang_projects/repro/2608.20308/code/ckpt/Wan2.2-Fun-5B-Control/./ ...
+[wan-backbone] LoRA r=64 a=64: 161.2M lora + patch_embed 1.82M + head 0.60M trainable
+/home/remote/miniforge3/envs/ace-ego-hand/lib/python3.10/site-packages/torch/nn/modules/transformer.py:392: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+[hand_model] WARNING: using FakeMANO stand-in (no licensed MANO on disk)
+### missing keys: 0; 
+### unexpected keys: 0;
+[] []
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/code/third_party/videox_fun/models/attention_utils.py:328: UserWarning: Padding mask is disabled when using scaled_dot_product_attention. It can have a significant impact on performance.
+  warnings.warn(
+/home/remote/Desktop/liziyang_projects/repro/2608.20308/src/smoke.py:132: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:835.)
+  log(f"train forward {time.time() - t:.1f}s  loss={float(total):.4f}  "
+train forward 0.4s  loss=7.2576  {"rot_geodesic": 2.3508, "rot_mse": 0.7283, "betas_l1": 0.4796, "joint_rootrel": 0.0763, "joint_cam": 0.1527, "wrist_cam": 0.1249, "img_joints2d": 0.2536, "img_reproj": 0.2987, "img_wrist2d": 0.1972, "cam_trans": 0.1249, "presence_3d": 0.8133, "presence_2d": 0.6704, "temporal_accel": 0.0087, "ray_cosine": 1.0}
+backward 0.5s  grad norms per group: {"decoder": 3359838548.955, "lora": 1.0398, "patch_embed": 13.6835}  max mem 12.3 GB
+eval output shapes: {"go": [21, 2, 1, 3, 3], "hp": [21, 2, 15, 3, 3], "global_orient": [21, 2, 3, 3], "hand_pose": [21, 2, 15, 3, 3], "betas": [21, 2, 10], "cam_trans": [21, 2, 3], "exists_2d": [21, 2], "exists_3d": [21, 2], "presence": [21, 2], "direct_joints_rootrel": [21, 2, 21, 3], "direct_wrist_cam": [21, 2, 3], "direct_joints_cam": [21, 2, 21, 3], "direct_joints2d": [21, 2, 21, 2], "is_right": [21, 2], "shape_token": [384], "segment_betas": [2, 10]}
+pnp accept frac: 0.0
+TIER 1 PASS

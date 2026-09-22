@@ -1,0 +1,27 @@
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+
+# MANO pickles are licensed and are not redistributed
+data/mano
+
+# Weights over GitHub's file limit. Config, tokenizer, and caption cache stay.
+# See /WEIGHTS.md at the workspace root.
+ckpt/**/*.safetensors
+ckpt/**/*.pth
+ckpt/**/*.bin
+checkpoints/*.pt
+
+# datasets and run outputs
+datasets/
+data_json/
+results/
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

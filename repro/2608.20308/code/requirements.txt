@@ -1,0 +1,25 @@
+# Versions used for the reported runs (Python 3.10, CUDA 12.1).
+torch==2.5.1
+numpy==1.24.4
+opencv-python==4.11.0.86
+omegaconf==2.3.0
+diffusers==0.36.0
+transformers==4.57.3
+accelerate==1.12.0     # needed transitively (low_cpu_mem_usage model loading)
+safetensors==0.4.5     # needed transitively (backbone .safetensors loading)
+einops==0.8.1          # needed transitively (VideoX-Fun)
+peft==0.18.1
+smplx==0.1.28
+PyYAML==6.0.2
+
+# NOTE: the official MANO pickles reference chumpy + scipy, and stock chumpy
+# no longer imports on modern numpy. Do NOT install chumpy — run
+# `python scripts/convert_mano_pkls.py` once instead (see README, "Requirements"); the
+# converted pickles need neither package.
+
+# NOTE: VideoX-Fun (cloned to third_party/, see README, "Requirements") ships its own
+# requirements.txt — do not install it over these pins; the versions above
+# already cover everything the Wan backbone path imports.
+
+# optional: training-loss dashboards (wandb.enable is false by default)
+# wandb==0.25.1

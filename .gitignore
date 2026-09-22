@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.DS_Store
+
+# GitHub rejects git blobs over 100 MB, and any file over 2 GB even with LFS.
+# These local weights stay on disk; see WEIGHTS.md for how to fetch them again.
+repro/2608.20308/code/ckpt/**/*.safetensors
+repro/2608.20308/code/ckpt/**/*.pth
+repro/2608.20308/code/ckpt/**/*.bin
+repro/2608.20308/code/checkpoints/*.pt
+repro/2608.20308/runs/**/*.pt
