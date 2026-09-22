@@ -1,90 +1,94 @@
-# ACE-Ego-Hand: Repurposing Video Diffusion Models for Occlusion-Robust Egocentric 3D Hand Motion Recovery
+# ACE-Ego-Hand：把视频扩散模型改造成对遮挡鲁棒的自我中心三维手部运动恢复
 
-**arxiv**: 2608.20308 (v2; v1 2026-08-20; source fetched 2026-09-21, `source/main.tex` single-file CVPR-style)
-**venue**: arXiv preprint (CVPR template `cvpr.sty`; no venue stated). Project originally named "DreamHand" (repo commit 3418f0eb, 2026-09-01).
-**authors**: Yufei Liu (1,4), Xixi Wang (2), Hao Li (3,4), Ganlong Zhao (3,4), Kaitong Cai (4), Chengkai Jin (2,4), Chunxiao Liu (4), Jianbo Liu (4), Siyuan Huang (4, project leader), Xingang Pan (2), Hongsheng Li (3,4, corresponding). 1 = SJTU, 2 = NTU, 3 = CUHK, 4 = ACE Robotics.
-**code**: https://github.com/ggxxii/ACE-Ego-Hand (MIT, inference only; commit `9757868`, 2026-09-10). Checkpoints: https://huggingface.co/acerobotics2025/ACE-Ego-Hand (`ace_ego_hand_k.pt`, `ace_ego_hand_kfree.pt`, CC BY-NC 4.0). Project page: https://ggxxii.github.io/ace-ego-hand/
-**local sources**: `2608.20308.md` (pandoc conversion), `source/main.tex`, `pdf/2608.20308.pdf`, `figures/*.png`
+**arxiv**：2608.20308（v2；v1 为 2026-08-20；源文件于 2026-09-21 拉取，`source/main.tex` 是单文件的 CVPR 风格）
+**发表**：arXiv 预印本（用了 CVPR 模板 `cvpr.sty`，没有写录用会议）。项目原名 “DreamHand”（仓库提交 3418f0eb，2026-09-01）。
+**作者**：Yufei Liu (1,4)，Xixi Wang (2)，Hao Li (3,4)，Ganlong Zhao (3,4)，Kaitong Cai (4)，Chengkai Jin (2,4)，Chunxiao Liu (4)，Jianbo Liu (4)，Siyuan Huang (4，项目负责人)，Xingang Pan (2)，Hongsheng Li (3,4，通讯)。1 = 上海交大，2 = 南洋理工，3 = 港中文，4 = ACE Robotics。
+**代码**：https://github.com/ggxxii/ACE-Ego-Hand （MIT，只有推理；提交 `9757868`，2026-09-10）。权重：https://huggingface.co/acerobotics2025/ACE-Ego-Hand （`ace_ego_hand_k.pt`、`ace_ego_hand_kfree.pt`，CC BY-NC 4.0）。项目页：https://ggxxii.github.io/ace-ego-hand/
+**本地来源**：`2608.20308.md`（pandoc 转换）、`source/main.tex`、`pdf/2608.20308.pdf`、`figures/*.png`
 
-**abstract** (verbatim):
+**摘要**：
 
-> Egocentric video offers scalable manipulation data for embodied AI, yet recovering metric 3D hand trajectories remains challenging due to severe object occlusion and frequent out-of-sight gaps. Existing single-frame and windowed temporal regressors fail when a hand briefly leaves the frame, while recent video diffusion models (VDMs) rely on heavy, stochastic multi-step sampling as pixel-space renderers. We instead repurpose a VDM into a deterministic geometry encoder. A single forward pass over the clean latent exposes scene content beyond current observations, including occluded and out-of-sight hands. We introduce **ACE-Ego-Hand**, an offline clip-level framework that extracts features via a Deterministic Clean-Latent Encoder and decodes them with a Bidirectional Spatiotemporal Decoder. ACE-Ego-Hand recovers continuous bimanual trajectories with metric placement and no external detector, while a Ray-Based Camera Solver supports a second configuration that needs no test-time camera intrinsics. Across five egocentric benchmarks, ACE-Ego-Hand sets a new state of the art, cutting MPJPE-p by 30% on occlusion-heavy ARCTIC and 40% on HOT3D. These gains reach 46%–61% once out-of-sight hands are included in the evaluation, offering a scalable path from everyday human video to robot manipulation data.
+自我中心视频能为具身智能提供可扩展的操作数据，但要恢复米制的三维手部轨迹仍然很难：物体遮挡严重，手还经常完全出画。现有的单帧回归器和滑窗时序回归器，在手短暂离开画面时就会失败；近期的视频扩散模型则把模型当成像素空间的渲染器，依赖很重的、随机的多步采样。本文反过来，把视频扩散模型改造成一个确定性的几何编码器。在干净潜变量上做一次前向，就能露出当前观测之外的场景内容，包括被挡住的手和出画的手。由此提出 **ACE-Ego-Hand**：一个离线、以整段片段为单位的框架。它用确定性干净潜变量编码器抽特征，再用双向时空解码器读出结果。它不依赖外部检测器，就能恢复连续的双手轨迹，并给出米制放置；基于射线的相机求解器还支持第二套配置，测试时可以不提供相机内参。在五个自我中心基准上，ACE-Ego-Hand 达到新的最好结果：在遮挡很重的 ARCTIC 上把 MPJPE-p 降低 30%，在 HOT3D 上降低 40%。一旦评测把出画的手也算进去，这些增益达到 46%–61%，为从日常人类视频走到机器人操作数据提供了一条可扩展的路径。
 
 ---
 
-## Method (verbatim, §3 "ACE-Ego-Hand")
+## 方法（§3「ACE-Ego-Hand」）
 
-> ACE-Ego-Hand processes an egocentric video clip $V=\{I_t\}_{t=1}^{T}$ to predict frame-wise 3D bimanual MANO parameters in a single deterministic pass: global orientation $\hat R_t$, articulation $\hat\theta_t$, camera-frame translation $\hat\tau_t$, and a per-clip shape $\hat\beta$. The MANO layer $\mathcal{M}$ maps the pose and shape parameters to hand meshes and 21 joints, and the network additionally predicts per-frame existence and visibility flags. Instead of iteratively sampling from generative models, we extract motion representations directly through three unified modules (Figure 2): a **Deterministic Clean-Latent Encoder** that reads features from a LoRA-adapted pretrained video diffusion model, a **Bidirectional Spatiotemporal Decoder** for sequence-wide trajectory estimation, and a **Ray-Based Camera Solver**. We consider two configurations: standard ACE-Ego-Hand and the intrinsics-free ACE-Ego-Hand.
+ACE-Ego-Hand 处理一段自我中心视频 $V=\{I_t\}_{t=1}^{T}$，用一次确定性前向，逐帧预测双手的三维 MANO 参数：全局朝向 $\hat R_t$、关节角 $\hat\theta_t$、相机坐标系平移 $\hat\tau_t$，以及每个片段一个形状 $\hat\beta$。MANO 层 $\mathcal{M}$ 把姿态和形状参数映射成手部网格和 21 个关节；网络还额外预测每帧的存在性和可见性标志。这里不从生成模型里迭代采样，而是通过三个模块直接抽出运动表示（图 2）：从经过 LoRA 适配的预训练视频扩散模型里读特征的**确定性干净潜变量编码器**，做整段轨迹估计的**双向时空解码器**，以及**基于射线的相机求解器**。考虑两套配置：标准 ACE-Ego-Hand，以及不依赖内参的 ACE-Ego-Hand。
 
-### §3.1 From Generator to Encoder
+### §3.1 从生成器变成编码器
 
-> **Feedforward encoding.** The generator $\Phi$ is a Diffusion Transformer (DiT) pretrained via rectified flow on noisy latents $x_\sigma = (1{-}\sigma)z + \sigma\epsilon$, where $z$ is the clean video latent, $\epsilon$ is Gaussian noise, and $\sigma\in[0,1]$ is the noise level. This sequence-level pretraining is expected to equip $\Phi$ with spatiotemporal priors such as object permanence, 3D structural consistency, and occlusion reasoning. §4.3 probes this premise by swapping feature sources. We therefore use $\Phi$ strictly as an encoder. A frozen VAE encoder $\mathcal{E}$ compresses the clip into the clean latent $z=\mathcal{E}(V)$, and a single deterministic forward pass runs at zero noise ($\sigma=0$):
-> $$F = \Phi_{0:L^\star}(z; \sigma=0), \tag{1, eq:encoder}$$
-> where $\Phi_{0:L^\star}$ truncates execution at block $L^\star=15$ of the zero-indexed 30-block stack, running the first 16 blocks. Bypassing the remaining blocks and generation head cuts per-pass computation by approximately half. A tap-depth sweep in Appendix D shows that block 15 retains nearly all of the available accuracy. The resulting feature sequence $F=\{F_\ell\}_{\ell=1}^{T'}$ contains $T'=21$ latent frames for an input of $T=81$ frames. This setup yields $4\times$ temporal and $16\times$ spatial compression. Each latent frame $F_\ell$ forms a spatial grid of $D=3072$-channel feature cells. For a $672\times 480$ input, this corresponds to a $42\times 30$ grid of $16\times 16$ pixel patches. The latent features $F$ then feed both the Bidirectional Spatiotemporal Decoder (§3.2) and the Ray-Based Camera Solver (§3.3).
+**前向编码。** 生成器 $\Phi$ 是一个扩散 Transformer（DiT），用 rectified flow 在带噪潜变量 $x_\sigma = (1{-}\sigma)z + \sigma\epsilon$ 上预训练。其中 $z$ 是干净的视频潜变量，$\epsilon$ 是高斯噪声，$\sigma\in[0,1]$ 是噪声水平。这种序列级预训练被认为会让 $\Phi$ 带上时空先验，例如物体永久性、三维结构一致性和遮挡推理。§4.3 通过换特征来源来检验这个前提。因此这里把 $\Phi$ 严格当作编码器。冻结的 VAE 编码器 $\mathcal{E}$ 把片段压成干净潜变量 $z=\mathcal{E}(V)$，再在零噪声（$\sigma=0$）下做一次确定性前向：
+
+$$F = \Phi_{0:L^\star}(z; \sigma=0), \tag{1, eq:encoder}$$
+
+其中 $\Phi_{0:L^\star}$ 在从 0 编号的 30 个 block 里、于 $L^\star=15$ 处截断，只跑前 16 个 block。跳过其余 block 和生成头，每次前向的计算大约砍掉一半。附录 D 的抽取深度扫描表明，block 15 几乎保留了全部可用精度。得到的特征序列 $F=\{F_\ell\}_{\ell=1}^{T'}$ 在输入 $T=81$ 帧时含有 $T'=21$ 个潜变量帧。时间压缩 4 倍，空间压缩 16 倍。每个潜变量帧 $F_\ell$ 是 $D=3072$ 通道的空间网格。对 $672\times 480$ 的输入，论文写成 $42\times 30$ 个 $16\times 16$ 像素的格子（代码实际是 32 像素的 $21\times 15$，见 `gaps_filled.md`）。潜变量特征 $F$ 同时送给双向时空解码器（§3.2）和基于射线的相机求解器（§3.3）。
+
+**端到端适配。** 编码器留在优化循环里可训练：注意力和前馈投影上加 LoRA，patch embedding 全量可训练，这样反传回来的三维监督会把 $F$ 端到端地改成对几何敏感的特征。§4.3 比较了别的潜变量表示。附录 D 的对照进一步表明，在 $\sigma=0$ 读干净潜变量，优于读加了噪声的潜变量。
+
+### §3.2 双向时空解码器
+
+**带空间锚的 query。** 用一个轻量的双向时空解码器，从抽取到的特征网格里读表示，query 本身带空间锚，如图 1。解码器在每个潜变量帧上处理 48 个 query：2 个手部 token，固定分给左右手；42 个关节 token；4 个 register token，当作可学习的草稿空间，不更新 $F$。把关节 query 做成带空间锚的 token，是为了把特征直接绑到物理关键点上，便于估计精确的三维手部姿态。
 >
-> **End-to-end adaptation.** We keep the encoder trainable within the optimization loop, utilizing LoRA on attention and feed-forward projections alongside a trainable patch embedding layer, so that backpropagated 3D supervision reshapes $F$ into geometry-aware features end to end. We compare alternative latent representations in §4.3. A matched comparison in Appendix D further shows that reading the clean latent at $\sigma=0$ outperforms reading noised latents.
-
-### §3.2 Bidirectional Spatiotemporal Decoder
-
-> **Spatially grounded queries.** We propose a lightweight Bidirectional Spatiotemporal Decoder with spatially grounded queries to extract representations from the tapped feature grid, as illustrated in Figure 1. The decoder processes 48 queries per latent frame: 2 hand tokens assigned to fixed left and right slots, 42 joint tokens, and 4 register tokens that serve as learned scratch space without updating $F$. Structuring joint queries as spatially grounded tokens binds features directly to physical keypoints, facilitating precise 3D hand pose estimation.
->
-> Each latent frame is tokenized into patch tokens by integrating two additive positional encodings:
+每个潜变量帧用两种相加的位置编码变成 patch token：
 > $$X_\ell = \mathrm{LN}(W_F F_\ell) + P^{\mathrm{sp}} + g\big(\Gamma(\hat r)\big), \tag{2, eq:token}$$
-> where $\mathrm{LN}$ denotes Layer Normalization and $W_F$ projects the $D=3072$ backbone channels to the 384-dimensional decoder space. The spatial PE $P^{\mathrm{sp}}$ provides explicit coordinates for attention, and the ray PE injects viewing geometry: $\Gamma$ Fourier-encodes the direction of each cell's predicted viewing ray $\hat r$, produced by the Ray Head (§3.3), and a zero-initialized MLP $g$ maps that encoding to the decoder dimension (implementation details in Appendix B).
+其中 $\mathrm{LN}$ 是 LayerNorm，$W_F$ 把骨干的 $D=3072$ 通道投到 384 维的解码器空间。空间位置编码 $P^{\mathrm{sp}}$ 给注意力提供显式坐标；射线位置编码注入观察几何：$\Gamma$ 对每个格子的预测视线方向 $\hat r$ 做傅里叶编码（射线头见 §3.3），零初始化的 MLP $g$ 再把它映到解码器维度（实现细节在附录 B）。
 >
-> **Spatial readout heads.** The Joint Head estimates 2D joint locations directly from this spatial grid. For each joint $j$, the cross-attention weights from its corresponding token form a spatial heatmap $A_j$. A soft-argmax operation then aggregates these attention probabilities to derive 2D joint anchors $\hat p_j$:
+**空间读出头。** 关节头直接从这个空间网格估计二维关节位置。对每个关节 $j$，对应 token 的交叉注意力权重形成一个空间热图 $A_j$。soft-argmax 把这些注意力概率聚成二维关节锚点 $\hat p_j$：
 > $$\hat p_j = \sum_{u} A_j(u)\,u, \qquad \sum_{u} A_j(u)=1, \tag{3, eq:softargmax}$$
-> where $u$ iterates over normalized grid-cell center coordinates in $[0,1]^2$. This differentiable formulation anchors each keypoint with sub-cell precision, and an MLP then predicts wrist-relative 3D joint positions in meters. In parallel, the Pose Head regresses the global orientation $\hat R$ and articulation $\hat\theta$ as Gram–Schmidt-orthogonalized 6D rotations, and the Camera Head predicts a log-depth $\hat\zeta$ with $\hat t_z = \exp(\hat\zeta)$ guaranteeing strictly positive metric depth. Existence and visibility confidence scores complete the frame-level readout, avoiding the need for Hungarian matching.
+其中 $u$ 遍历归一化格子中心坐标，范围是 $[0,1]^2$。这个可微形式把每个关键点锚到亚格子精度，随后一个 MLP 预测以米为单位、相对腕部的三维关节位置。与此并行，姿态头把全局朝向 $\hat R$ 和关节角 $\hat\theta$ 回归成经 Gram–Schmidt 正交化的 6D 旋转；相机头预测对数深度 $\hat\zeta$，$\hat t_z = \exp(\hat\zeta)$ 保证米制深度严格为正。存在性和可见性置信度补齐这一帧的读出，因此不需要匈牙利匹配。
 >
-> **Clip-level shape prior.** In egocentric videos, an individual hand maintains a constant physical shape and scale throughout a continuous recording. Estimating mesh parameters independently per frame, however, risks size flickering and shape drift under camera motion and local occlusions. To enforce this physical invariant, the Shape Head predicts hand shape parameters $\hat\beta$ once per hand per video clip by temporally pooling hand tokens across all $T$ frames, yielding a single mesh scale for the entire sequence.
+**片段级形状先验。** 在自我中心视频里，同一只手在一段连续录像中的物理形状和尺度是不变的。如果逐帧独立估计网格参数，相机运动和局部遮挡下就会出现尺寸闪烁和形状漂移。为了保住这个物理不变量，形状头对每只手、每个视频片段只预测一次 $\hat\beta$：把全部 $T$ 帧的手部 token 在时间上池化，整段序列只用一个网格尺度。
 >
-> **Unconstrained bidirectional reasoning.** We process the spatially grounded queries with four alternating attention layers. Frame $\ell$'s queries first extract per-frame visual details through Spatial Cross-Attention over $X_\ell$, and queries from all frames then exchange motion information via Temporal Self-Attention. Rotary relative positional encodings on the temporal axis remove absolute sequence constraints, so a single forward pass generalizes to long recordings (Appendix D). Temporal attention runs at the downsampled latent frame rate $T'$, with outputs linearly interpolated back to the $T$ video frames, reducing whole-clip attention to roughly $(T'/T)^2 \approx 1/15$ of the full-resolution cost. We apply no causal mask: each frame conditions on both past and future context across the entire clip, so the decoder reconstructs occluded or out-of-sight hands rather than extrapolating unidirectionally.
+**不受约束的双向推理。** 用四层交替注意力处理这些带空间锚的 query。第 $\ell$ 帧的 query 先通过空间交叉注意力，在 $X_\ell$ 上抽取这一帧的视觉细节；然后所有帧的 query 再通过时间自注意力交换运动信息。时间轴上的旋转相对位置编码去掉了绝对序列长度的约束，所以一次前向可以推广到更长的录像（附录 D）。时间注意力跑在下采样后的潜变量帧率 $T'$ 上，输出再线性插值回 $T$ 个视频帧，整段注意力的代价大约降到全分辨率的 $(T'/T)^2 \approx 1/15$。不加因果掩码：每一帧都同时看整段的过去和未来，于是解码器是在重建被挡住或出画的手，而不是单向外推。
 
-### §3.3 Ray-Based Camera Solver
+### §3.3 基于射线的相机求解器
 
-> **Intrinsics-free ray field prediction.** Camera geometry is needed at two points: the ray positional encoding in Eq. (2) and the metric projection of the predicted hand. Readout heads that memorize the pixel-to-metric mapping of one camera fail to generalize across intrinsics, so we instead predict a continuous viewing-ray field, following ray-based camera representations [RayDiffusion 2024; PerspectiveFields 2023]. The Ray Head, a zero-initialized $1\times 1$ convolution on $F$, predicts a per-cell direction normalized to a unit ray $\hat r = (\hat r_x, \hat r_y, \hat r_z)$ in the camera frame. Temporal pooling then averages the per-frame predictions into a single field, since intrinsics are constant within a clip.
->
-> During training, ground-truth camera calibration supervises this ray field using a cosine distance loss:
+**不依赖内参的射线场预测。** 相机几何在两处要用到：式 (2) 的射线位置编码，以及预测手的米制投影。如果读出头记住了某一台相机的像素到米的映射，就无法跨内参泛化，所以这里改为预测一个连续的视线场，沿用基于射线的相机表示（RayDiffusion 2024；PerspectiveFields 2023）。射线头是加在 $F$ 上的零初始化 $1\times 1$ 卷积，为每个格子预测一个方向，并归一化成相机坐标系里的单位射线 $\hat r = (\hat r_x, \hat r_y, \hat r_z)$。再做时间池化，把逐帧预测平均成一个场，因为一段片段内内参是常数。
+
+训练时，用真值相机标定、以余弦距离监督这个射线场：
 > $$\mathcal{L}_{\mathrm{ray}} = \frac{1}{|\Omega|} \sum_{u\in\Omega} \big(1 - \langle \hat r(u),\, r_K(u) \rangle\big), \tag{4, eq:ray}$$
-> where $\langle\cdot,\cdot\rangle$ denotes the inner product, $\Omega$ is the latent token grid, and $r_K(u)$ is the unit ray unprojected from the cell center under the calibrated camera model. One head thus accommodates both pinhole and fisheye camera models without intrinsics as input at test time.
->
-> **Mixed-PnP translation.** To determine metric placement, we employ a mixed Perspective-n-Point (PnP) scheme, similar in spirit to ViDiHand but formulated for the calibration-free setting. Rather than predicting full 3D translations, the Camera Head regresses only the optical depth $\hat t_z = \exp(\hat\zeta)$, and we solve the in-plane translation $(t_x, t_y)$ directly against the predicted 2D joint anchors. Per frame and hand (indices suppressed), the MANO forward pass yields $J^{\mathrm{can}} = \mathcal{M}(\hat R, \hat\theta, \hat\beta)$, the 21 joints posed and camera-oriented but not yet placed, so the depth of joint $j$ along the optical axis is $z_j = J^{\mathrm{can}}_{z,j} + \hat t_z$. The bearing vector $b_j = (b^x_j, b^y_j)$, the dimensionless pair $(x/z, y/z)$ of the ray toward joint $j$, is evaluated analytically from the predicted ray field $\hat r$. A closed-form per-axis regression fits an effective pinhole camera $(\hat f, \hat c)$ to $\hat r$ in normalized pixel units, with no calibration input, and $b_j = (\hat p_j - \hat c)/\hat f$. The fitted camera extrapolates to out-of-frame anchors and denoises the per-token field. Standard ACE-Ego-Hand instead computes the bearings from the provided intrinsics as $\big((u_j{-}c_x)/f_x,\,(v_j{-}c_y)/f_y\big)$ with $(u_j, v_j) = \hat p_j$ in pixels. Each configuration is trained end to end with its own bearing source, the $K$-free rows in Table 1 report a separately trained model, not a test-time solver switch.
->
-> Perspective projection is linear in the in-plane shift, so $t_x$ admits a closed-form weighted least-squares solution:
+其中 $\langle\cdot,\cdot\rangle$ 是内积，$\Omega$ 是潜变量 token 网格，$r_K(u)$ 是在标定相机模型下从格子中心反投影得到的单位射线。这样一个头就能同时容纳针孔和鱼眼，测试时不必把内参当作输入。
+
+**Mixed-PnP 平移。** 为了确定米制放置，采用混合的透视 n 点（PnP）。精神上接近 ViDiHand，但写成了可以没有标定的形式。相机头不预测完整的三维平移，只回归光轴深度 $\hat t_z = \exp(\hat\zeta)$，平面内平移 $(t_x, t_y)$ 则直接对着预测的二维关节锚点来解。对每一帧、每一只手（下标省略），MANO 前向给出 $J^{\mathrm{can}} = \mathcal{M}(\hat R, \hat\theta, \hat\beta)$，即 21 个已经摆好姿态、对齐相机、但还没平移的关节。关节 $j$ 沿光轴的深度是 $z_j = J^{\mathrm{can}}_{z,j} + \hat t_z$。视线向量 $b_j = (b^x_j, b^y_j)$ 是指向关节 $j$ 的射线的无量纲对 $(x/z, y/z)$，由预测射线场 $\hat r$ 解析得到。一次闭式的逐轴回归，在归一化像素单位下把一个等效针孔相机 $(\hat f, \hat c)$ 拟合到 $\hat r$ 上，不需要标定输入，然后 $b_j = (\hat p_j - \hat c)/\hat f$。拟合出的相机会把出画的锚点外推回来，并给逐 token 的场去噪。标准 ACE-Ego-Hand 则用给定内参计算视线：$\big((u_j{-}c_x)/f_x,\,(v_j{-}c_y)/f_y\big)$，其中 $(u_j, v_j) = \hat p_j$，单位是像素。每套配置都用自己的视线来源端到端训练；Table 1 的 $K$-free 行是另一个训出来的模型，不是测试时把求解器换一下。
+
+透视投影对平面内平移是线性的，所以 $t_x$ 有闭式的加权最小二乘解：
 > $$b^x_j = \frac{J^{\mathrm{can}}_{x,j} + t_x}{z_j} \quad \Rightarrow \quad \hat t_x = \frac{\sum_j m_j z_j^{-1} \big(b^x_j - J^{\mathrm{can}}_{x,j} / z_j\big)}{\sum_j m_j z_j^{-2}}, \tag{5, eq:pnp}$$
-> where $m_j \in \{0, 1\}$ selects joints that lie in front of the camera with anchors inside the frame. We solve for $\hat t_y$ symmetrically, yielding $\hat\tau = (\hat t_x, \hat t_y, \hat t_z)$. With too few valid joints or an excessive re-projection residual, the hand falls back to its inverse-projected wrist ray at depth $\hat t_z$ (thresholds in Appendix B).
+其中 $m_j \in \{0, 1\}$ 选出位于相机前方、且锚点在画面内的关节。$\hat t_y$ 对称地求解，得到 $\hat\tau = (\hat t_x, \hat t_y, \hat t_z)$。有效关节太少，或重投影残差过大时，手退回到深度 $\hat t_z$ 处、沿自己反投影腕部射线放置（阈值在附录 B）。
 
-### §3.4 Training Recipe
+### §3.4 训练配方
 
-> We optimize all trainable components, namely the patch embedding, the LoRA modules, the Ray Head, and the Bidirectional Spatiotemporal Decoder, jointly under a unified objective:
-> $$\mathcal{L} = \mathcal{L}_{\mathrm{rot}} + \mathcal{L}_{\mathrm{joint}} + \mathcal{L}_{\mathrm{img}} + \mathcal{L}_{\mathrm{cam}} + \mathcal{L}_{\mathrm{pres}} + \mathcal{L}_{\mathrm{tmp}} + \mathcal{L}_{\mathrm{ray}}. \tag{6, eq:loss}$$
-> $\mathcal{L}_{\mathrm{rot}}$ supervises orientation, articulation, and shape. $\mathcal{L}_{\mathrm{joint}}$ constrains root-relative, camera-frame, and wrist 3D positions. $\mathcal{L}_{\mathrm{img}}$ penalizes 2D anchors and re-projected MANO keypoints under the training camera. $\mathcal{L}_{\mathrm{cam}}$ supervises camera-frame translation, with gradients flowing through the PnP solver. $\mathcal{L}_{\mathrm{pres}}$ trains existence and visibility scores, and $\mathcal{L}_{\mathrm{tmp}}$ penalizes 3D joint accelerations for temporal smoothness. The $K$-free configuration adds $\mathcal{L}_{\mathrm{fit}}$, the bearing error of its learned camera (§3.3) against the calibrated one, whose gradient reaches the ray field only through the four fitted parameters. Loss weights are in Appendix B.
->
-> We highlight three key supervision strategies. First, we fully supervise out-of-sight hands rather than masking them out, forcing the bidirectional attention to reconstruct invisible hands from temporal context. Second, a source lacking 3D MANO annotations, RHD in our mixture, supervises only 2D anchors, 3D joints, and presence heads, a routing that adds appearance diversity while shielding the MANO parameter heads. Third, camera intrinsics never enter the encoder or decoder: they serve as training targets for the $\mathcal{L}_{\mathrm{img}}$ re-projections, $\mathcal{L}_{\mathrm{ray}}$, and $\mathcal{L}_{\mathrm{fit}}$, and in the standard configuration, they additionally supply the bearings of the translation solve.
+所有可训练部分一起优化：patch embedding、LoRA、射线头、双向时空解码器，目标是：
 
----
+$$\mathcal{L} = \mathcal{L}_{\mathrm{rot}} + \mathcal{L}_{\mathrm{joint}} + \mathcal{L}_{\mathrm{img}} + \mathcal{L}_{\mathrm{cam}} + \mathcal{L}_{\mathrm{pres}} + \mathcal{L}_{\mathrm{tmp}} + \mathcal{L}_{\mathrm{ray}}. \tag{6, eq:loss}$$
 
-## Implementation details (verbatim, Appendix B `sec:supp_impl`)
+$\mathcal{L}_{\mathrm{rot}}$ 监督朝向、关节角和形状。$\mathcal{L}_{\mathrm{joint}}$ 约束相对根、相机系和腕部的三维位置。$\mathcal{L}_{\mathrm{img}}$ 惩罚二维锚点，以及在训练相机下重投影的 MANO 关键点。$\mathcal{L}_{\mathrm{cam}}$ 监督相机系平移，梯度穿过 PnP 求解器。$\mathcal{L}_{\mathrm{pres}}$ 训练存在性和可见性分数，$\mathcal{L}_{\mathrm{tmp}}$ 惩罚三维关节加速度，让时间上更平滑。$K$-free 配置再加 $\mathcal{L}_{\mathrm{fit}}$，即学到的相机（§3.3）相对标定相机的视线误差；它的梯度只经过四个拟合参数到达射线场。损失权重在附录 B。
 
-### B.1 Architecture
-
-> The spatial PE $P^{\mathrm{sp}}$ is a learned $16\times16$ grid bilinearly resized to the token resolution, and the ray PE Fourier-encodes each ray's azimuth and elevation with sines and cosines at eight doubling frequencies, after which a zero-initialized MLP maps the resulting features to the decoder width, giving a smooth start to training. In the mixed-PnP solve, a joint votes ($m_j=1$) if it lies at least 5 cm in front of the camera and its anchor lies inside the frame by a margin of at least 2% of the image size. When fewer than six joints vote, or when the refit RMS anchor residual exceeds the larger of 15 px and a quarter of the hand's 2D bounding-box diagonal, the wrist is placed on its own inverse-projected ray at depth $\hat t_z$. The $K$-free camera fit is a closed-form, differentiable per-axis linear regression over the token grid, guarded by a variance floor of $10^{-4}$ and a bracket on the fitted focal length; a clip that fails either guard, including the fisheye Re:InterHand training arm, falls back to reading the ray field at the anchors, and both decode paths, the per-joint anchor bearings and the wrist fallback, use the fitted camera. The backbone is the Wan2.2-Fun-5B-Control release distributed with VideoX-Fun, loaded as its low-noise DiT submodel with 30 blocks of width 3072, feed-forward width 14336, 148 input latent channels, and 48 output channels, and paired with the Wan 2.2 VAE. We keep the released input and output channel counts unchanged. LoRA adapters of rank 64 with $\alpha=64$ and no dropout are injected into all ten linear layers of every block, namely the query, key, value, and output projections of both self-attention and cross-attention plus the two feed-forward layers. Adapters are matched by module name rather than by depth, so one set is instantiated in each of the 30 blocks, giving 5.37M adapter parameters per block and 161.219M in total. Three counts are worth keeping apart. Of the 5.002B pretrained weights the released DiT holds, only the 1.822M patch embedding is ever updated, and the 30 transformer blocks stay frozen throughout. With the adapters attached, the instantiated backbone holds 5.16B parameters. The optimizer is then handed 183.99M parameters, split by module into 161.219M in the LoRA adapters, 20.347M in the decoder and its readout heads, 1.822M in the patch embedding, 0.596M in the DiT's own diffusion output head, and 9,219 in the Ray Head. These fall into the three learning-rate groups of the next subsection: the LoRA group, the patch-embedding group, and one group holding the decoder, its readout heads, the Ray Head, and the diffusion output head. Since the forward pass stops at the tap, the parameters a gradient can actually reach are the 85.983M of LoRA inside the executed blocks, the 1.822M patch embedding, the 12.287M of decoder parameters that this configuration routes through, and the Ray Head, for 100.10M in all. The adapters in the bypassed blocks and the diffusion output head sit on the skipped path and therefore never leave their initialization. We confirmed this on the released checkpoint: after 20k steps every LoRA $B$ matrix past the tap is still exactly zero, which makes those adapters exact identity maps, and every tensor of the diffusion output head is bit-identical to the pretrained release. The decoder parameters outside the 12.287M belong to readout variants that this configuration does not select, and we keep them instantiated so that a single checkpoint schema covers every ablation.
-
-### B.2 Optimization
-
-> Only the 183.99M parameters listed above are registered with the optimizer. The decoder, the Ray Head, and the LoRA adapters are trained from scratch, with the Ray Head and the LoRA $B$ matrices starting at zero so that the network begins the run as the unmodified backbone, while the patch embedding is fine-tuned from its released weights. We run 20k AdamW steps (weight decay $10^{-2}$, gradient clip 1.0, cosine decay, 200 warmup steps) at three learning rates: $2{\times}10^{-4}$ for the decoder and heads, $1{\times}10^{-4}$ for the LoRA adapters, $2{\times}10^{-5}$ for the patch embedding. Each GPU holds four clips, where a clip is 81 frames for the video datasets and five frames for the two image datasets. The standard configuration runs on 16 A100 GPUs, for an effective batch of 64 clips, and the $K$-free configuration on 8, for an effective batch of 32. The ablations of Table 3 follow the $K$-free configuration, except that the hand-pooled-query and absolute-PE variants run on half as many GPUs at the same step count and the same number of clips per GPU, the halved-effective-batch caveat noted alongside Table 3.
-
-### B.3 Loss Weights
-
-> $\mathcal{L}_{\mathrm{rot}}$ supervises orientation and articulation with the geodesic distance $\arccos\big(\tfrac{1}{2}(\mathrm{tr}(\hat R^{\top}R)-1)\big)$ to the ground-truth rotation $R$, plus a rotation-matrix MSE (weight 1 each), and shape with an $\ell_1$ loss (0.1). $\mathcal{L}_{\mathrm{joint}}$ places $\ell_1$ losses on root-relative (weight 10, the dominant term), camera-frame (5), and wrist (2) 3D joints. $\mathcal{L}_{\mathrm{img}}$ supervises, under the *training* camera, the grounded soft-argmax 2D anchors and the re-projected MANO joints (weight 1, and 0.5 for the wrist). $\mathcal{L}_{\mathrm{cam}}$ is an $\ell_1$ loss on the assembled translation (weight 1), with the gradient flowing through the mixed-PnP solve. $\mathcal{L}_{\mathrm{pres}}$ applies binary cross-entropy to existence and visibility (0.5/0.25). $\mathcal{L}_{\mathrm{tmp}}$ penalizes the acceleration of the predicted 3D joints $\hat J_t$, $\|\hat J_{t+1}-2\hat J_t+\hat J_{t-1}\|_1$ (0.5). $\mathcal{L}_{\mathrm{ray}}$ carries weight 1, and the $K$-free configuration's $\mathcal{L}_{\mathrm{fit}}$ carries weight 5 with a linear warmup over the first 500 steps.
+有三条关键的监督策略。第一，出画的手全监督，而不是掩掉，迫使双向注意力从时间上下文里把看不见的手重建出来。第二，混合数据里没有三维 MANO 标注的来源（这里是 RHD）只监督二维锚点、三维关节和存在性头；这样增加外观多样性，同时不碰 MANO 参数头。第三，相机内参从不进入编码器或解码器：它们只作为 $\mathcal{L}_{\mathrm{img}}$ 重投影、$\mathcal{L}_{\mathrm{ray}}$ 和 $\mathcal{L}_{\mathrm{fit}}$ 的训练目标；在标准配置里，它们还提供平移求解用的视线方向。
 
 ---
 
-## Hyperparameter / dataset tables (verbatim)
+## 实现细节（附录 B，`sec:supp_impl`）
 
-### Table 2 (`tab:mix`) — Training and evaluation data
+### B.1 架构
 
-| Source | Train clips | Train frames | Test clips | Test frames | Eval (81-f segments) | Wt. (%) |
+空间位置编码 $P^{\mathrm{sp}}$ 是一个可学习的 $16\times16$ 网格，双线性缩放到 token 分辨率。射线位置编码对方位角和俯仰角做傅里叶，在八个倍频上取正弦和余弦，再用一个零初始化的 MLP 映到解码器宽度，让训练起步更平滑。mixed-PnP 里，一个关节投票（$m_j=1$）的条件是：它在相机前方至少 5 cm，且锚点落在画面内、边距至少为图像尺寸的 2%。投票少于六个，或者重拟合的 RMS 锚点残差超过 15 像素与手部二维包围盒对角线四分之一中的较大者时，腕部放到深度 $\hat t_z$ 处、沿自己的反投影射线。$K$-free 的相机拟合是在 token 网格上做闭式、可微的逐轴线性回归，用 $10^{-4}$ 的方差下限和拟合焦距上的一个括号来保护；任一保护失败的片段（包括鱼眼的 Re:InterHand 训练支路）退回到在锚点处直接读射线场。两条解码路径——逐关节锚点的视线，以及腕部回退——都使用拟合出的相机。骨干是随 VideoX-Fun 发布的 Wan2.2-Fun-5B-Control，按其低噪声 DiT 子模型加载：30 个 block，宽度 3072，前馈宽度 14336，输入潜变量通道 148，输出通道 48，并配 Wan 2.2 VAE。发布时的输入、输出通道数保持不变。秩 64、$\alpha=64$、无 dropout 的 LoRA 注入每个 block 的全部十个线性层，即自注意力和交叉注意力各自的 query、key、value、output，外加两个前馈层。适配器按模块名匹配，不按深度，所以 30 个 block 各有一套，每块 5.37M，共 161.219M。有三个数要分开看。发布的 DiT 有 5.002B 预训练权重，其中只有 1.822M 的 patch embedding 会被更新，30 个 transformer block 全程冻结。接上适配器后，实例化的骨干有 5.16B 参数。优化器拿到的是 183.99M：LoRA 161.219M，解码器及其读出头 20.347M，patch embedding 1.822M，DiT 自己的扩散输出头 0.596M，射线头 9,219。它们落进下一小节的三组学习率：LoRA 一组，patch embedding 一组，解码器、读出头、射线头和扩散输出头合为一组。因为前向在抽取点停下，梯度实际能到的是：被执行的 block 里的 LoRA 85.983M、patch embedding 1.822M、这套配置真正走过的解码器参数 12.287M，以及射线头，合计 100.10M。被跳过的 block 里的适配器和扩散输出头在跳过的路径上，因此一直停在初始化。在发布的 checkpoint 上核对过：20k 步之后，抽取点之后的每个 LoRA $B$ 矩阵仍然精确为零，这些适配器就是恒等映射；扩散输出头的每个张量与预训练发布版逐比特相同。12.287M 之外的解码器参数属于这套配置没选中的读出变体，仍然实例化，好让一个 checkpoint 结构覆盖每一次消融。
+
+### B.2 优化
+
+只有上面列出的 183.99M 参数注册进优化器。解码器、射线头和 LoRA 从零训练；射线头和 LoRA 的 $B$ 矩阵从零开始，于是训练开始时网络等于未改动的骨干；patch embedding 则从发布权重微调。跑 20k 步 AdamW（权重衰减 $10^{-2}$，梯度裁剪 1.0，余弦衰减，预热 200 步），三组学习率：解码器和头 $2{\times}10^{-4}$，LoRA $1{\times}10^{-4}$，patch embedding $2{\times}10^{-5}$。每张 GPU 放 4 个片段：视频数据集一个片段是 81 帧，两个图像数据集是 5 帧。标准配置用 16 张 A100，有效 batch 64 个片段；$K$-free 用 8 张，有效 batch 32。Table 3 的消融沿用 $K$-free 配置，但手部池化 query 和绝对位置编码两个变体用一半数量的 GPU，步数和每卡片段数不变；有效 batch 减半这一点在 Table 3 旁注明了。
+
+### B.3 损失权重
+
+$\mathcal{L}_{\mathrm{rot}}$ 用测地距离 $\arccos\big(\tfrac{1}{2}(\mathrm{tr}(\hat R^{\top}R)-1)\big)$ 监督朝向和关节角，目标是真值旋转 $R$，再加一项旋转矩阵 MSE（各权重 1），形状用 $\ell_1$（0.1）。$\mathcal{L}_{\mathrm{joint}}$ 对相对根（权重 10，主导项）、相机系（5）和腕部（2）的三维关节加 $\ell_1$。$\mathcal{L}_{\mathrm{img}}$ 在*训练*相机下监督带空间锚的 soft-argmax 二维锚点，以及重投影的 MANO 关节（权重 1，腕部 0.5）。$\mathcal{L}_{\mathrm{cam}}$ 是对拼好的平移的 $\ell_1$（权重 1），梯度穿过 mixed-PnP。$\mathcal{L}_{\mathrm{pres}}$ 对存在性和可见性做二元交叉熵（0.5/0.25）。$\mathcal{L}_{\mathrm{tmp}}$ 惩罚预测三维关节 $\hat J_t$ 的加速度，$\|\hat J_{t+1}-2\hat J_t+\hat J_{t-1}\|_1$（0.5）。$\mathcal{L}_{\mathrm{ray}}$ 权重为 1；$K$-free 的 $\mathcal{L}_{\mathrm{fit}}$ 权重为 5，前 500 步线性预热。
+
+---
+
+## 超参与数据集表
+
+### 表 2（`tab:mix`）：训练与评测数据
+
+| 来源 | 训练片段 | 训练帧 | 测试片段 | 测试帧 | 评测（81 帧段） | 权重 (%) |
 |---|---:|---:|---:|---:|---:|---:|
 | ARCTIC | 267 | 184,373 | 34 | 24,863 | 291 | 14 |
 | HOT3D | 126 | 444,649 | 72 | 256,870 | 437 | 18 |
@@ -93,42 +97,42 @@
 | Re:InterHand | 43 | 21,315 | -- | -- | -- | 16 |
 | FreiHAND | 32,560 | 162,800 | -- | -- | -- | 14 |
 | RHD | 41,251 | 206,255 | -- | -- | -- | 14 |
-| HOI4D (held out) | -- | -- | 166 | 49,800 | 498 | 0 |
+| HOI4D（留出） | -- | -- | 166 | 49,800 | 498 | 0 |
 
-> Caption: Clip and frame counts are read from the dataset manifests. For the video sources one clip is one full-length recording, not an 81-frame window. FreiHAND and RHD are static image sources, so their clip column counts images. "Eval" is the number of 81-frame test segments shared with every baseline. For HOT3D and OakInk2 these segments cover only a subset of the available test video. "Wt." is the per-batch sampling weight in percent and is identical for both configurations. HOI4D is held out of training.
+表注：片段数和帧数从数据集清单读出。对视频来源，一个片段是一整段录像，不是 81 帧窗口。FreiHAND 和 RHD 是静态图像，所以「训练片段」一列数的是图像张数。「评测」是与每个基线共用的 81 帧测试段数量。HOT3D 和 OakInk2 的这些段只覆盖可用测试视频的一个子集。「权重」是每个 batch 的采样权重（百分比），两套配置相同。HOI4D 不参与训练。
 
-### Datasets, Splits, and Preprocessing (verbatim, Appendix A.2)
+### 数据集、划分与预处理（附录 A.2）
 
-> The five evaluated video datasets (ARCTIC, HOT3D, H2O, OakInk2, and HOI4D) are processed at 30 fps without temporal subsampling. On the four of these that enter training, training operates on full-length recordings, drawing a random 21-latent-frame (81 RGB frame) window from each recording at every step, while evaluation decodes the fixed 81-frame test segments shared with all baselines. Three further datasets enter the training mixture only. [...] Input resolutions are $672\times480$ for ARCTIC and $480\times480$ for HOT3D, and H2O and OakInk2 are resized to a width of 832 with intrinsics rescaled accordingly, so that every dataset yields an even latent grid. Test splits are subject-disjoint on ARCTIC (test subject s05) and H2O (test subject 4), recording-level on HOT3D (126/72 recordings), and sequence-level on OakInk2 (evaluated on the 202-segment subset shared with the baselines), while HOI4D is excluded from training entirely and evaluated zero-shot. Each dataset ships its own hand annotation format, and we convert all of them into one shared MANO format so that a single loader and a single evaluator serve every dataset. As the main text notes, HOI4D and H2O rely partially on pseudo-ground-truth MANO annotation derived from a per-frame estimator [...]
->
-> **Training mixture.** Both configurations train on the same seven-source mixture, with a dataset drawn per batch from the weights of Table 2, which sum to 100. [...] Re:InterHand contributes relit studio captures rendered under egocentric fisheye cameras at 10 fps, so it enters as video and receives the full 21-latent-frame window like the video datasets above. FreiHAND and RHD are two static image sources. Each image is replicated into a static five-frame clip. Those batches contain almost no temporal variation, so they supply appearance and hand-pose diversity rather than motion. FreiHAND is right-hand only and carries a full MANO fit, as does Re:InterHand. RHD provides 21 3D joints and no MANO fit. Those samples supervise the 2D anchor, 3D joint, existence, and visibility heads while the rotation and shape terms are held at zero, following the loss routing described in the main text. Every batch is drawn from a single dataset, so clips of different length and different latent grid are never stacked together.
+五个被评测的视频数据集（ARCTIC、HOT3D、H2O、OakInk2、HOI4D）按 30 fps 处理，时间上不抽帧。其中进入训练的四个，训练在整段录像上进行，每一步从每段录像里随机抽一个 21 个潜变量帧（81 个 RGB 帧）的窗口；评测则解码与所有基线共用的固定 81 帧测试段。另外三个数据集只进入训练混合。[...] 输入分辨率：ARCTIC 为 $672\times480$，HOT3D 为 $480\times480$；H2O 和 OakInk2 缩到宽 832，内参按比例缩放，使每个数据集都得到偶数的潜变量网格。测试划分：ARCTIC 按被试分开（测试被试 s05），H2O 也按被试（测试被试 4），HOT3D 按录像（126/72），OakInk2 按序列（在与基线共用的 202 段子集上评测）；HOI4D 完全不参与训练，做零样本评测。每个数据集自带自己的手部标注格式，全部转成同一种 MANO 格式，这样一套加载器和一套评测器就能服务所有数据集。如正文所说，HOI4D 和 H2O 部分依赖由逐帧估计器得到的伪真值 MANO [...]
 
-### Table `tab:metrics` — Metric symbols
+**训练混合。** 两套配置用同一套七来源混合，每个 batch 按 Table 2 的权重抽一个数据集，权重加起来是 100。[...] Re:InterHand 提供在自我中心鱼眼相机下、10 fps 重打光的棚拍，所以它当视频进入，并像上面的视频数据集一样用完整的 21 个潜变量帧窗口。FreiHAND 和 RHD 是两个静态图像源。每张图像复制成一个静止的五帧片段。这些 batch 几乎没有时间变化，提供的是外观和手部姿态的多样性，不是运动。FreiHAND 只有右手，并带完整 MANO 拟合，Re:InterHand 也有完整 MANO。RHD 提供 21 个三维关节，没有 MANO 拟合。这些样本监督二维锚点、三维关节、存在性和可见性头，旋转和形状项保持为零，路由方式见正文。每个 batch 只来自一个数据集，因此不同长度、不同潜变量网格的片段不会被堆在一起。
 
-| Symbol | Averaged over | Pen. | Unit |
+### 表 `tab:metrics`：指标符号
+
+| 符号 | 在什么上平均 | 惩罚 | 单位 |
 |---|---|:-:|---|
-| FAcc | frames | -- | -- |
-| Recall, F1 | on-screen hands | -- | -- |
-| MPJPE-p | on-screen hands | yes | mm |
-| PA-p | on-screen hands | yes | mm |
-| EPE2D-p | on-screen joints | yes | px |
-| GO-p | on-screen hands | yes | deg |
-| CT-p | on-screen hands | yes | m |
-| Jitter | matched runs | -- | mm/frame² |
-| MPJPE^OOS | out-of-sight hand-frames | -- | mm |
-| MPJPE^+OOS | all hand-frames | -- | mm |
+| FAcc | 帧 | -- | -- |
+| Recall, F1 | 画面内的手 | -- | -- |
+| MPJPE-p | 画面内的手 | 是 | mm |
+| PA-p | 画面内的手 | 是 | mm |
+| EPE2D-p | 画面内的关节 | 是 | px |
+| GO-p | 画面内的手 | 是 | deg |
+| CT-p | 画面内的手 | 是 | m |
+| Jitter | 匹配上的连续轨迹 | -- | mm/frame² |
+| MPJPE^OOS | 出画的手-帧 | -- | mm |
+| MPJPE^+OOS | 全部手-帧 | -- | mm |
 
 ---
 
-## Algorithm boxes
+## 算法框
 
-The paper contains **no numbered algorithm / pseudocode block**. The closest procedural specification is the mixed-PnP solve (Eq. 5 + Appendix B.1 gates), reconstructed in `method-flowchart.md` and `gaps_filled.md`.
+论文里**没有**编号的算法或伪代码块。最接近过程说明的是 mixed-PnP 求解（式 5 + 附录 B.1 的门控），已在 `method-flowchart.md` 和 `gaps_filled.md` 里重构。
 
 ---
 
-## Loss formulation and equations (with numbers)
+## 损失形式与公式（含数字）
 
-| # | Label | Equation | Where |
+| # | 标签 | 公式 | 位置 |
 |---|---|---|---|
 | 1 | `eq:encoder` | $F = \Phi_{0:L^\star}(z;\sigma=0)$, $L^\star=15$ | §3.1 |
 | 2 | `eq:token` | $X_\ell = \mathrm{LN}(W_F F_\ell) + P^{\mathrm{sp}} + g(\Gamma(\hat r))$ | §3.2 |
@@ -138,38 +142,38 @@ The paper contains **no numbered algorithm / pseudocode block**. The closest pro
 | 6 | `eq:loss` | $\mathcal{L}=\mathcal{L}_{\mathrm{rot}}+\mathcal{L}_{\mathrm{joint}}+\mathcal{L}_{\mathrm{img}}+\mathcal{L}_{\mathrm{cam}}+\mathcal{L}_{\mathrm{pres}}+\mathcal{L}_{\mathrm{tmp}}+\mathcal{L}_{\mathrm{ray}}$ (+ $\mathcal{L}_{\mathrm{fit}}$ for K-free) | §3.4 |
 | 7 | `eq:oosmix` | $\mathrm{MPJPE}^{+\mathrm{OOS}} = \frac{n_{\mathrm{IV}}\bar\varepsilon_{\mathrm{IV}} + n_{\mathrm{OOS}}\bar\varepsilon_{\mathrm{OOS}}}{n_{\mathrm{IV}}+n_{\mathrm{OOS}}}$ | App. A.1 |
 
-Per-term weights (Appendix B.3):
+各项权重（附录 B.3）：
 
-| Term | Sub-term | Loss | Weight |
+| 项 | 子项 | 损失 | 权重 |
 |---|---|---|---:|
-| $\mathcal{L}_{\mathrm{rot}}$ | global orient + articulation | geodesic $\arccos(\tfrac12(\mathrm{tr}(\hat R^\top R)-1))$ | 1 |
-| | global orient + articulation | rotation-matrix MSE | 1 |
-| | shape $\beta$ | $\ell_1$ | 0.1 |
-| $\mathcal{L}_{\mathrm{joint}}$ | root-relative 3D joints | $\ell_1$ | 10 |
-| | camera-frame 3D joints | $\ell_1$ | 5 |
-| | wrist 3D | $\ell_1$ | 2 |
-| $\mathcal{L}_{\mathrm{img}}$ | soft-argmax 2D anchors + reprojected MANO joints (training camera) | (unspecified norm) | 1 |
-| | wrist 2D | (unspecified norm) | 0.5 |
-| $\mathcal{L}_{\mathrm{cam}}$ | assembled translation $\hat\tau$ (grad through PnP) | $\ell_1$ | 1 |
-| $\mathcal{L}_{\mathrm{pres}}$ | existence / visibility | BCE | 0.5 / 0.25 |
+| $\mathcal{L}_{\mathrm{rot}}$ | 全局朝向 + 关节角 | 测地距离 $\arccos(\tfrac12(\mathrm{tr}(\hat R^\top R)-1))$ | 1 |
+| | 全局朝向 + 关节角 | 旋转矩阵 MSE | 1 |
+| | 形状 $\beta$ | $\ell_1$ | 0.1 |
+| $\mathcal{L}_{\mathrm{joint}}$ | 相对根的三维关节 | $\ell_1$ | 10 |
+| | 相机系三维关节 | $\ell_1$ | 5 |
+| | 腕部三维 | $\ell_1$ | 2 |
+| $\mathcal{L}_{\mathrm{img}}$ | soft-argmax 二维锚点 + 重投影的 MANO 关节（训练相机） | （范数未写明） | 1 |
+| | 腕部二维 | （范数未写明） | 0.5 |
+| $\mathcal{L}_{\mathrm{cam}}$ | 拼好的平移 $\hat\tau$（梯度穿过 PnP） | $\ell_1$ | 1 |
+| $\mathcal{L}_{\mathrm{pres}}$ | 存在性 / 可见性 | BCE | 0.5 / 0.25 |
 | $\mathcal{L}_{\mathrm{tmp}}$ | $\|\hat J_{t+1}-2\hat J_t+\hat J_{t-1}\|_1$ | $\ell_1$ | 0.5 |
-| $\mathcal{L}_{\mathrm{ray}}$ | cosine distance, Eq. 4 | | 1 |
-| $\mathcal{L}_{\mathrm{fit}}$ (K-free only) | bearing error of fitted camera vs calibrated | (unspecified) | 5, linear warmup 500 steps |
+| $\mathcal{L}_{\mathrm{ray}}$ | 余弦距离，式 4 | | 1 |
+| $\mathcal{L}_{\mathrm{fit}}$（仅 K-free） | 拟合相机相对标定相机的视线误差 | （未写明） | 5，线性预热 500 步 |
 
-Evaluation metric definitions (Appendix A.1, verbatim formulas): $\bar J = J - J_0$ (wrist-relative), $\Lambda$ Procrustes,
-$\mathrm{MPJPE}=\tfrac{1}{21}\sum_j\|\bar{\hat J}_j-\bar J_j\|_2$, $\mathrm{PA}=\tfrac{1}{21}\sum_j\|\Lambda(\hat J)_j-J_j\|_2$, $\mathrm{EPE_{2D}}=\tfrac{1}{|\mathcal V|}\sum_{j\in\mathcal V}\|\hat p_j-p_j\|_2$, $\mathrm{CT}=\|\hat\tau-\tau\|_2$, $\mathrm{GO}=\angle(\hat R,R)$, Jitter $=\tfrac{1}{T-2}\sum_t\|\tilde J_{t+1}-2\tilde J_t+\tilde J_{t-1}\|$ with $\tilde J=\bar{\hat J}+\hat\tau$. On-screen gate: $\exists j: \pi(J^{\mathrm{cam}}_j)\in[0,W)\times[0,H) \wedge J^{\mathrm{cam}}_{z,j}>z_{\min}=1$ cm. Detection: existence $>0.5$, matched by strictly-positive IoU of projected mesh boxes (GT boxes dilated 10%), same side. Penalty: FN charged with canonical MANO (identity $R$, zero $\theta$, mean $\beta$, $\tau=0$); EPE2D FN charged image diagonal (826 px ARCTIC, 679 px HOT3D).
+评测指标定义（附录 A.1，公式保持原样）：$\bar J = J - J_0$（相对腕部），$\Lambda$ 为 Procrustes，
+$\mathrm{MPJPE}=\tfrac{1}{21}\sum_j\|\bar{\hat J}_j-\bar J_j\|_2$，$\mathrm{PA}=\tfrac{1}{21}\sum_j\|\Lambda(\hat J)_j-J_j\|_2$，$\mathrm{EPE_{2D}}=\tfrac{1}{|\mathcal V|}\sum_{j\in\mathcal V}\|\hat p_j-p_j\|_2$，$\mathrm{CT}=\|\hat\tau-\tau\|_2$，$\mathrm{GO}=\angle(\hat R,R)$，Jitter $=\tfrac{1}{T-2}\sum_t\|\tilde J_{t+1}-2\tilde J_t+\tilde J_{t-1}\|$，其中 $\tilde J=\bar{\hat J}+\hat\tau$。画面内门控：$\exists j: \pi(J^{\mathrm{cam}}_j)\in[0,W)\times[0,H) \wedge J^{\mathrm{cam}}_{z,j}>z_{\min}=1$ cm。检测：存在性 $>0.5$，用投影网格包围盒的严格正 IoU 匹配（真值框膨胀 10%），同一侧。惩罚：漏检按规范 MANO 计（单位旋转 $R$、$\theta$ 为零、平均 $\beta$、$\tau=0$）；EPE2D 的漏检按图像对角线计（ARCTIC 826 px，HOT3D 679 px）。
 
 ---
 
-## Results tables (verbatim)
+## 结果表（数字保持原表）
 
-### Table 1 (`tab:main`) — Main comparison on ARCTIC, HOT3D, held-out HOI4D
+### 表 1（`tab:main`）：ARCTIC、HOT3D、留出的 HOI4D 上的主对比
 
-† zero-shot; ‡ causal Kalman filtering (EgoForce). Bold = best per column.
+† 零样本；‡ 因果卡尔曼滤波（EgoForce）。加粗 = 该列最好。
 
 **ARCTIC**
 
-| Method | FAcc↑ | Recall↑ | F1↑ | MPJPE-p↓ | PA-p↓ | MPJPE+OOS↓ | EPE2D-p↓ | GO-p↓ | CT-p↓ | Jitter↓ |
+| 方法 | FAcc↑ | Recall↑ | F1↑ | MPJPE-p↓ | PA-p↓ | MPJPE+OOS↓ | EPE2D-p↓ | GO-p↓ | CT-p↓ | Jitter↓ |
 |---|---|---|---|---|---|---|---|---|---|---|
 | InterWild | 0.878 | 0.943 | 0.959 | 30.817 | 15.952 | 39.435 | 53.888 | 25.386 | 0.097 | 46.577 |
 | HaMeR | 0.875 | 0.943 | 0.957 | 29.197 | 14.596 | 38.183 | 65.289 | 24.907 | 0.095 | 18.279 |
@@ -186,7 +190,7 @@ $\mathrm{MPJPE}=\tfrac{1}{21}\sum_j\|\bar{\hat J}_j-\bar J_j\|_2$, $\mathrm{PA}=
 
 **HOT3D**
 
-| Method | FAcc↑ | Recall↑ | F1↑ | MPJPE-p↓ | PA-p↓ | MPJPE+OOS↓ | EPE2D-p↓ | GO-p↓ | CT-p↓ | Jitter↓ |
+| 方法 | FAcc↑ | Recall↑ | F1↑ | MPJPE-p↓ | PA-p↓ | MPJPE+OOS↓ | EPE2D-p↓ | GO-p↓ | CT-p↓ | Jitter↓ |
 |---|---|---|---|---|---|---|---|---|---|---|
 | InterWild | 0.669 | 0.881 | 0.868 | 77.168 | 24.811 | 89.218 | 71.482 | 58.501 | 0.213 | 101.164 |
 | HaMeR | 0.692 | 0.904 | 0.883 | 68.314 | 21.455 | 80.264 | 59.077 | 49.636 | 0.102 | 23.632 |
@@ -201,9 +205,9 @@ $\mathrm{MPJPE}=\tfrac{1}{21}\sum_j\|\bar{\hat J}_j-\bar J_j\|_2$, $\mathrm{PA}=
 | **ACE-Ego-Hand** | **0.986** | 0.998 | **0.996** | **12.888** | **6.436** | **17.273** | 6.418 | **7.924** | **0.025** | **3.159** |
 | ACE-Ego-Hand (K-free) | 0.984 | **0.999** | 0.995 | 13.535 | 6.768 | 18.703 | **6.067** | 8.362 | 0.026 | 3.426 |
 
-**HOI4D† (zero-shot)**
+**HOI4D†（零样本）**
 
-| Method | FAcc↑ | Recall↑ | F1↑ | MPJPE-p↓ | PA-p↓ | MPJPE+OOS↓ | EPE2D-p↓ | GO-p↓ | CT-p↓ | Jitter↓ |
+| 方法 | FAcc↑ | Recall↑ | F1↑ | MPJPE-p↓ | PA-p↓ | MPJPE+OOS↓ | EPE2D-p↓ | GO-p↓ | CT-p↓ | Jitter↓ |
 |---|---|---|---|---|---|---|---|---|---|---|
 | InterWild | 0.731 | 0.922 | 0.864 | 53.072 | 22.909 | -- | 80.549 | 41.743 | 0.228 | 98.866 |
 | HaMeR | 0.731 | 0.923 | 0.864 | 44.481 | 21.580 | -- | 79.494 | 33.557 | 0.187 | 20.068 |
@@ -218,11 +222,11 @@ $\mathrm{MPJPE}=\tfrac{1}{21}\sum_j\|\bar{\hat J}_j-\bar J_j\|_2$, $\mathrm{PA}=
 | **ACE-Ego-Hand** | 0.958 | 0.996 | 0.974 | 23.031 | 11.664 | -- | **14.987** | 18.426 | 0.057 | 2.393 |
 | ACE-Ego-Hand (K-free) | 0.975 | **0.999** | 0.985 | **22.154** | **11.213** | -- | 18.004 | **17.242** | **0.055** | **2.317** |
 
-### Table `tab:supp_extra` — H2O and OakInk2 (same protocol)
+### 表 `tab:supp_extra`：H2O 与 OakInk2（同一协议）
 
-**H2O** (in-domain for ACE-Ego-Hand; partially pseudo-GT)
+**H2O**（对 ACE-Ego-Hand 是域内；部分为伪真值）
 
-| Method | FAcc↑ | Recall↑ | F1↑ | MPJPE-p↓ | PA-p↓ | MPJPE+OOS↓ | EPE2D-p↓ | GO-p↓ | CT-p↓ | Jitter↓ |
+| 方法 | FAcc↑ | Recall↑ | F1↑ | MPJPE-p↓ | PA-p↓ | MPJPE+OOS↓ | EPE2D-p↓ | GO-p↓ | CT-p↓ | Jitter↓ |
 |---|---|---|---|---|---|---|---|---|---|---|
 | InterWild | 0.981 | 0.990 | 0.994 | 21.526 | 8.979 | -- | 19.929 | 17.695 | 0.037 | 16.153 |
 | HaMeR | 0.980 | 0.990 | 0.992 | 20.079 | 7.221 | -- | 21.786 | 17.971 | 0.034 | 9.307 |
@@ -237,9 +241,9 @@ $\mathrm{MPJPE}=\tfrac{1}{21}\sum_j\|\bar{\hat J}_j-\bar J_j\|_2$, $\mathrm{PA}=
 | ACE-Ego-Hand | **0.999** | **1.000** | **1.000** | **9.223** | **4.894** | -- | **6.088** | **5.689** | 0.031 | **0.707** |
 | ACE-Ego-Hand (K-free) | **0.999** | **1.000** | **1.000** | 10.310 | 5.522 | -- | 9.464 | 6.064 | 0.024 | 0.741 |
 
-**OakInk2** (in-domain; native MANO GT; 202-segment subset)
+**OakInk2**（域内；原生 MANO 真值；202 段子集）
 
-| Method | FAcc↑ | Recall↑ | F1↑ | MPJPE-p↓ | PA-p↓ | MPJPE+OOS↓ | EPE2D-p↓ | GO-p↓ | CT-p↓ | Jitter↓ |
+| 方法 | FAcc↑ | Recall↑ | F1↑ | MPJPE-p↓ | PA-p↓ | MPJPE+OOS↓ | EPE2D-p↓ | GO-p↓ | CT-p↓ | Jitter↓ |
 |---|---|---|---|---|---|---|---|---|---|---|
 | InterWild | 0.547 | 0.722 | 0.819 | 51.013 | 37.038 | 65.619 | 244.590 | 54.710 | 0.179 | 43.499 |
 | HaMeR | 0.680 | 0.799 | 0.866 | 43.804 | 28.726 | 59.471 | 171.887 | 46.340 | 0.148 | 19.510 |
@@ -254,37 +258,37 @@ $\mathrm{MPJPE}=\tfrac{1}{21}\sum_j\|\bar{\hat J}_j-\bar J_j\|_2$, $\mathrm{PA}=
 | ACE-Ego-Hand | **0.977** | **0.985** | **0.993** | **8.988** | **5.887** | **8.272** | **11.129** | **7.222** | **0.018** | **1.089** |
 | ACE-Ego-Hand (K-free) | **0.977** | **0.985** | **0.993** | 9.813 | 6.362 | 9.308 | 12.046 | 7.366 | **0.018** | 1.150 |
 
-### Table `tab:vdm` — Feature-source ablation on ARCTIC (ARCTIC-only, 10k steps; not comparable to Table 1)
+### 表 `tab:vdm`：ARCTIC 上的特征来源消融（只用 ARCTIC，10k 步；不能和 Table 1 比）
 
-| Feature source | MPJPE-p↓ | PA-p↓ | Jitter↓ | MPJPE^OOS↓ |
+| 特征来源 | MPJPE-p↓ | PA-p↓ | Jitter↓ | MPJPE^OOS↓ |
 |---|---|---|---|---|
 | **ACE-Ego-Hand** (Wan 2.2 + LoRA) | **16.95** | **8.16** | **2.69** | **41.5** |
-| w/o LoRA (frozen Wan 2.2) | 23.10 | 10.83 | 3.35 | 50.1 |
-| V-JEPA 2 (frozen) | 17.81 | 8.74 | 4.56 | 66.1 |
-| VideoMAE (frozen) | 22.53 | 10.42 | 5.60 | 77.6 |
-| VAE latent | 32.50 | 12.89 | 3.35 | 79.3 |
-| raw RGB | 46.50 | 16.93 | 4.37 | 98.3 |
+| 去掉 LoRA（冻结的 Wan 2.2） | 23.10 | 10.83 | 3.35 | 50.1 |
+| V-JEPA 2（冻结） | 17.81 | 8.74 | 4.56 | 66.1 |
+| VideoMAE（冻结） | 22.53 | 10.42 | 5.60 | 77.6 |
+| VAE 潜变量 | 32.50 | 12.89 | 3.35 | 79.3 |
+| 原始 RGB | 46.50 | 16.93 | 4.37 | 98.3 |
 
-### Table 3 (`tab:decoder`) — Camera and decoder ablations on ARCTIC (all rows omit $\mathcal{L}_{\mathrm{fit}}$ and read bearings directly from the ray field; not comparable to Table 1)
+### 表 3（`tab:decoder`）：ARCTIC 上的相机与解码器消融（所有行都去掉 $\mathcal{L}_{\mathrm{fit}}$，视线方向直接从射线场读取；不能和 Table 1 比）
 
-| Variant | MPJPE-p↓ | PA-p↓ | EPE2D-p↓ | CT-p↓ | Jitter↓ |
+| 变体 | MPJPE-p↓ | PA-p↓ | EPE2D-p↓ | CT-p↓ | Jitter↓ |
 |---|---|---|---|---|---|
 | **ACE-Ego-Hand** (standard) | **15.256** | **7.474** | **9.180** | 0.021 | 2.700 |
-| *Removing test-time intrinsics* | | | | | |
+| *去掉测试时内参* | | | | | |
 | ACE-Ego-Hand (K-free) | 15.264 | 7.770 | 13.168 | **0.020** | 2.704 |
-| w/o mixed-PnP (inverse proj.) | 16.134 | 8.002 | 14.425 | 0.030 | 2.874 |
-| w/o PnP solve (direct regr.) | 15.546 | 7.955 | 14.399 | 0.023 | **2.658** |
-| *Decoder design (ablated from K-free)* | | | | | |
-| w/o spatial PE | 15.348 | 8.101 | 13.141 | 0.023 | 2.686 |
-| w/o joint queries (pooled) [half batch] | 17.144 | 8.916 | 14.849 | 0.029 | 2.727 |
-| shape β from registers | 15.622 | 7.760 | 14.078 | **0.020** | 2.714 |
-| w/o rotary PE (absolute PE) [half batch] | 17.787 | 8.671 | 13.915 | 0.033 | 2.948 |
+| 去掉 mixed-PnP（反投影） | 16.134 | 8.002 | 14.425 | 0.030 | 2.874 |
+| 去掉 PnP 求解（直接回归） | 15.546 | 7.955 | 14.399 | 0.023 | **2.658** |
+| *解码器设计（从 K-free 上消融）* | | | | | |
+| 去掉空间位置编码 | 15.348 | 8.101 | 13.141 | 0.023 | 2.686 |
+| 去掉关节 query（池化）[一半 batch] | 17.144 | 8.916 | 14.849 | 0.029 | 2.727 |
+| 形状 β 从 register 来 | 15.622 | 7.760 | 14.078 | **0.020** | 2.714 |
+| 去掉旋转位置编码（绝对位置编码）[一半 batch] | 17.787 | 8.671 | 13.915 | 0.033 | 2.948 |
 
-### Table `tab:oos` — Out-of-sight stratification (wrist-aligned, GT-gated, no -p penalty)
+### 表 `tab:oos`：出画分层（腕对齐，由真值门控，不带 -p 惩罚）
 
-| Method | ARCTIC in view | ARCTIC OOS | ARCTIC +OOS | HOT3D in view | HOT3D OOS | HOT3D +OOS | OakInk2 in view | OakInk2 OOS | OakInk2 +OOS |
+| 方法 | ARCTIC 画面内 | ARCTIC 出画 | ARCTIC +出画 | HOT3D 画面内 | HOT3D 出画 | HOT3D +出画 | OakInk2 画面内 | OakInk2 出画 | OakInk2 +出画 |
 |---|---|---|---|---|---|---|---|---|---|
-| (counts IV / OOS) | 43,893 | 3,247 | | 57,985 | 12,394 | | 27,988 | 4,736 | |
+| （计数：画面内 / 出画） | 43,893 | 3,247 | | 57,985 | 12,394 | | 27,988 | 4,736 | |
 | InterWild | 32.000 | 139.937 | 39.435 | 77.866 | 142.326 | 89.218 | 49.364 | 161.681 | 65.619 |
 | HaMeR | 30.576 | 141.005 | 38.183 | 67.956 | 137.847 | 80.264 | 42.361 | 160.588 | 59.471 |
 | Hamba | 32.513 | 141.774 | 40.039 | 71.277 | 140.333 | 83.438 | 45.119 | 160.812 | 61.863 |
@@ -297,9 +301,9 @@ $\mathrm{MPJPE}=\tfrac{1}{21}\sum_j\|\bar{\hat J}_j-\bar J_j\|_2$, $\mathrm{PA}=
 | ViDiHand | 22.311 | 149.113 | 31.045 | 21.513 | 151.703 | 44.440 | 38.109 | 162.053 | 56.047 |
 | ACE-Ego-Hand | 15.423 | 35.165 | 16.783 | **12.703** | **38.649** | **17.273** | **7.449** | **13.131** | **8.272** |
 
-### Table `tab:radius` — Error vs distance from image center (in-view stratum; standard config vs K-free *without fit*)
+### 表 `tab:radius`：误差随离图像中心距离的变化（画面内分层；标准配置 vs 不做拟合的 K-free）
 
-| Dataset | Radius r | share | MPJPE (std) | CT (std) | MPJPE (no-fit) | CT (no-fit) |
+| 数据集 | 半径 r | 占比 | MPJPE（标准） | CT（标准） | MPJPE（无拟合） | CT（无拟合） |
 |---|---|---|---|---|---|---|
 | ARCTIC | 0.00–0.25 | 26.1% | 15.81 | 0.019 | 15.49 | 0.019 |
 | ARCTIC | 0.25–0.50 | 57.7% | 14.96 | 0.021 | 14.97 | 0.020 |
@@ -310,105 +314,105 @@ $\mathrm{MPJPE}=\tfrac{1}{21}\sum_j\|\bar{\hat J}_j-\bar J_j\|_2$, $\mathrm{PA}=
 | HOT3D | 0.50–0.75 | 28.5% | 12.68 | 0.025 | 13.12 | 0.058 |
 | HOT3D | >0.75 | 4.4% | 18.80 | 0.035 | 18.19 | 0.190 |
 
-### Table `tab:tap` — Tap depth (reduced recipe: ARCTIC+HOT3D, eff. batch 16, 20k steps, inverse-projection decode)
+### 表 `tab:tap`：抽取深度（缩减配方：ARCTIC+HOT3D，有效 batch 16，20k 步，反投影解码）
 
-| Tap (blocks run) | MPJPE-p | PA-p | EPE2D-p | GO-p | CT-p | Jitter |
+| 抽取点（实际跑的 block 数） | MPJPE-p | PA-p | EPE2D-p | GO-p | CT-p | Jitter |
 |---|---|---|---|---|---|---|
-| Block 10 (11/30) | 17.77 | 8.70 | 11.63 | 12.58 | 0.030 | 2.74 |
-| **Block 15 (16/30)** | 16.10 | 7.76 | 9.99 | **11.98** | 0.028 | 2.66 |
-| Block 20 (21/30) | **15.93** | **7.68** | **9.87** | 12.15 | **0.021** | **2.59** |
-| Block 24 (25/30) | 15.95 | 7.70 | 9.93 | 12.02 | 0.023 | 2.60 |
+| 第 10 块（跑 11/30） | 17.77 | 8.70 | 11.63 | 12.58 | 0.030 | 2.74 |
+| **第 15 块（跑 16/30）** | 16.10 | 7.76 | 9.99 | **11.98** | 0.028 | 2.66 |
+| 第 20 块（跑 21/30） | **15.93** | **7.68** | **9.87** | 12.15 | **0.021** | **2.59** |
+| 第 24 块（跑 25/30） | 15.95 | 7.70 | 9.93 | 12.02 | 0.023 | 2.60 |
 
-### Table `tab:sigma` — Clean vs noised latent (same 291 ARCTIC segments, 20k steps)
+### 表 `tab:sigma`：干净潜变量 vs 加噪潜变量（同一批 291 个 ARCTIC 段，20k 步）
 
-| Latent readout | MPJPE-p | PA-p | EPE2D-p | GO-p | CT-p | Jitter |
+| 潜变量读出 | MPJPE-p | PA-p | EPE2D-p | GO-p | CT-p | Jitter |
 |---|---|---|---|---|---|---|
-| clean, σ=0 | **15.26** | **7.47** | **9.18** | **11.81** | **0.021** | **2.70** |
-| noised, σ=0.5 | 17.66 | 7.99 | 9.78 | 12.62 | 0.034 | 2.78 |
+| 干净，σ=0 | **15.26** | **7.47** | **9.18** | **11.81** | **0.021** | **2.70** |
+| 加噪，σ=0.5 | 17.66 | 7.99 | 9.78 | 12.62 | 0.034 | 2.78 |
 
-### Efficiency (Appendix C.4)
+### 效率（附录 C.4）
 
-> ACE-Ego-Hand runs at 63.1 fps (63.3 fps in the K-free configuration) in a single deterministic pass whose runtime is 72% VAE encode, against 1.91 fps for ViDiHand, a 33× gap. [...] WiLoR reaches 15.5 fps. [Crop-based baselines with ViTDet-H+ViTPose+ cluster at 1.5–1.7 fps.] Timed on one 81-frame ARCTIC clip on one A100, median of ≥3 passes after warmup.
+ACE-Ego-Hand 一次确定性前向达到 63.1 fps（K-free 为 63.3 fps），其中 72% 的时间花在 VAE 编码上；ViDiHand 是 1.91 fps，相差 33 倍。[...] WiLoR 达到 15.5 fps。[基于裁剪、带 ViTDet-H+ViTPose+ 的基线集中在 1.5–1.7 fps。] 计时用一段 81 帧的 ARCTIC，一张 A100，预热后至少 3 次的中位数。
 
 ---
 
-## Caveats / negative results / mentioned-but-not-shown
+## 需要注意的地方 / 负面结果 / 提到了但没展示
 
-- **Ablation recipes are not comparable to Table 1.** Table `tab:vdm` = ARCTIC only, 10k steps. Table 3 = "one shared recipe (HOI4D held out)", all rows omit $\mathcal{L}_{\mathrm{fit}}$ and read bearings directly from the ray field; "hand-pooled queries and absolute PE run at half the data-parallel width". Table `tab:tap` = ARCTIC+HOT3D, eff. batch 16, inverse-projection decode. Table `tab:sigma` = single seed per setting.
-- **Table 3 standard row (15.256/7.474/9.180/0.021/2.700) is numerically identical to the Table 1 standard ARCTIC row**, even though Table 3 claims a different shared recipe. Either the "shared recipe" for the standard row is the main run, or it is a transcription reuse. Ambiguous.
-- "Direct regression does return the lowest Jitter of the table (2.658), a trade-off we do not adopt."
-- **Tap depth**: block 20 and 24 are marginally better than 15 on 5/6 metrics ("we read the residual difference as run-to-run noise"). The choice of 15 was "fixed before the model reported in this paper was trained".
-- "The K-free configuration trades a small pose margin for calibration freedom ... MPJPE-p runs 0.6–1.4 mm above the standard configuration ... consistent with the $\mathcal{L}_{\mathrm{fit}}$ term competing for shared capacity; annealing its weight is a natural next step."
-- "The fit assumes a pinhole camera, so fisheye clips fall back to reading the ray field directly" (incl. Re:InterHand training arm).
-- **Long single-pass decoding** degrades MPJPE-p 15.26 → 17.99 mm (+18%) at whole-recording length while Jitter improves 2.700 → 2.585; at 125 frames MPJPE-p is marginally *better* than at 81.
-- **Out-of-sight metrics are wrist-aligned only**: "No table in this paper measures absolute out-of-sight placement, because none of the five benchmarks scores it." Absolute OOS placement "relies on depth and bearing regressed from temporal context through the solver fallback, and remains less constrained".
-- **Without the camera fit**, K-free CT-p in the outermost radius bin is 0.165 m (ARCTIC) / 0.190 m (HOT3D) vs 0.048 / 0.035 for standard; HOT3D false negatives fall from 2,491 to 74 with the fit.
-- "Each ACE-Ego-Hand entry comes from a single training run." (H2O/OakInk2; by extension all rows are single-seed.)
-- **Label quality**: HOI4D and H2O labels are partially pseudo-GT from a per-frame estimator; on H2O the model *trains* on that label distribution. Only ARCTIC and H2O are subject-disjoint; HOT3D (recording-level) and OakInk2 (sequence-level) may have subject overlap.
-- **Baseline handling**: HaWoR scored without SLAM/infilling (works against it); Dyn-HaMR gets GT extrinsics; WildHands/HaWoR get GT intrinsics; ViDiHand has no public release (authors' predictions scored on request); baselines not retrained on these splits.
-- **HOT3D split** is a *custom recording-level* split (126/72), not the official subject split (GitHub issue #5 asks for split IDs; unanswered as of 2026-09-21).
-- **Throughput**: 72% of the runtime is VAE encode (so the DiT half-pass + decoder is ~28%).
-- Diffusion output head is registered with the optimizer but never receives gradient ("bit-identical to the pretrained release").
-- "ACE-Ego-Hand predicts hands in the camera frame and does not estimate camera motion."
-- Community failure report (GitHub issue #3): wide-FOV (>100°) user cameras yield systematically too-large depth; training FOV family ≈ 80°.
+- **消融配方不能和 Table 1 比。** 表 `tab:vdm` = 只用 ARCTIC，10k 步。表 3 = 「一套共享配方（HOI4D 留出）」，所有行都去掉 $\mathcal{L}_{\mathrm{fit}}$，视线方向直接从射线场读；「手部池化 query 和绝对位置编码用一半的数据并行宽度」。表 `tab:tap` = ARCTIC+HOT3D，有效 batch 16，反投影解码。表 `tab:sigma` = 每种设定一个种子。
+- **表 3 的标准行（15.256/7.474/9.180/0.021/2.700）和 Table 1 的标准 ARCTIC 行数字完全一样**，但表 3 声称用了另一套共享配方。要么标准行的「共享配方」就是主实验，要么是抄表时复用了数字。含糊。
+- 「直接回归确实给出表中最低的 Jitter（2.658），这个折中我们不采用。」
+- **抽取深度**：block 20 和 24 在 6 项里的 5 项上略好于 15（「我们把剩余差异看成跑次之间的噪声」）。选 15 是「在本文报告的模型开始训练之前就定好的」。
+- 「K-free 用一小段姿态差距换不要标定的自由……MPJPE-p 比标准配置高 0.6–1.4 mm……与 $\mathcal{L}_{\mathrm{fit}}$ 争用共享容量一致；把它的权重退火是自然的下一步。」
+- 「拟合假设针孔相机，所以鱼眼片段退回直接读射线场」（包括 Re:InterHand 训练支路）。
+- **整段一次解码**：在整段录像长度上，MPJPE-p 从 15.26 变到 17.99 mm（+18%），同时 Jitter 从 2.700 变好到 2.585；在 125 帧时 MPJPE-p 比 81 帧还略好一点。
+- **出画指标只做腕对齐**：「本文没有任何一张表度量出画手的绝对放置，因为五个基准都不评这个。」出画的绝对放置「靠从时间上下文经求解器回退回归出的深度和视线，约束更弱」。
+- **没有相机拟合时**，最外一圈半径上 K-free 的 CT-p 是 0.165 m（ARCTIC）/ 0.190 m（HOT3D），标准配置是 0.048 / 0.035；加上拟合后，HOT3D 的漏检从 2,491 降到 74。
+- 「ACE-Ego-Hand 的每一条都来自一次训练。」（H2O/OakInk2；由此全部行都是单种子。）
+- **标签质量**：HOI4D 和 H2O 的标签部分是逐帧估计器的伪真值；在 H2O 上模型*就是在这个标签分布上训练的*。只有 ARCTIC 和 H2O 按被试分开；HOT3D（录像级）和 OakInk2（序列级）可能有被试重叠。
+- **基线怎么处理**：HaWoR 评分时没用 SLAM/补全（对它不利）；Dyn-HaMR 用了真值外参；WildHands/HaWoR 用了真值内参；ViDiHand 没有公开发布（应作者请求对他们的预测打分）；基线没有在这些划分上重训。
+- **HOT3D 划分**是*自定义的录像级*划分（126/72），不是官方的被试划分（GitHub issue #5 要划分 ID；截至 2026-09-21 没有回复）。
+- **吞吐**：运行时间的 72% 是 VAE 编码（所以 DiT 的半程前向 + 解码器大约是 28%）。
+- 扩散输出头注册进了优化器，但从收不到梯度（「与预训练发布版逐比特相同」）。
+- 「ACE-Ego-Hand 在相机坐标系里预测手，不估计相机运动。」
+- 社区失败报告（GitHub issue #3）：用户的宽视场（>100°）相机上，深度系统性偏大；训练时的视场族大约 80°。
 
 ---
 
-# Open questions (inputs to Stage 3)
+# 开放问题（给第 3 阶段的输入）
 
-Numbered for cross-reference from `inventory.md` and `gaps_filled.md`.
+编号供 `inventory.md` 和 `gaps_filled.md` 交叉引用。哪些已被代码回答，见 `inventory.md` §3。
 
-**Encoder / backbone**
-1. **Text conditioning of the DiT.** Wan DiT blocks have text cross-attention. The paper never says what context is fed (empty prompt? fixed caption? dropped?). LoRA is applied to `cross_attn.{q,k,v,o}`, so this matters.
-2. **Control channels at σ=0.** Wan2.2-Fun-5B-*Control* has 148 input channels = 48 latent + 100 control. Paper says "keep the released input and output channel counts unchanged" but not what fills the 100 control channels when the clean video latent is the input.
-3. **Timestep conditioning at σ=0.** The DiT is adaLN-conditioned on $t$. Is $t=0$ fed, or the shifted-scheduler timestep corresponding to σ=0?
-4. **LoRA on the patch-embedding vs full fine-tune.** Paper: patch embedding is "fully" updated (1.822M). Confirm no LoRA on it.
-5. **Compute dtype**: bf16 backbone? fp32 LoRA? Autocast? Not stated.
-6. **Gradient checkpointing** during training: not stated (would matter for a 5B backbone at 4 clips/GPU).
-7. **Which Wan2.2 sub-model**: "low-noise DiT submodel" — confirm which of the two Wan2.2 MoE experts (`low_noise_model`).
+**编码器 / 骨干**
+1. **DiT 的文本条件。** Wan 的 DiT block 有文本交叉注意力。论文从没说喂进去的上下文是什么（空提示？固定字幕？丢掉？）。LoRA 加在 `cross_attn.{q,k,v,o}` 上，所以这事关紧要。
+2. **σ=0 时的控制通道。** Wan2.2-Fun-5B-*Control* 有 148 个输入通道 = 48 潜变量 + 100 控制。论文说「保持发布的输入和输出通道数不变」，但没说当输入是干净视频潜变量时，那 100 个控制通道填什么。
+3. **σ=0 时的时间步条件。** DiT 用 adaLN 以 $t$ 为条件。喂进去的是 $t=0$，还是与 σ=0 对应的平移调度器时间步？
+4. **patch embedding 上是 LoRA 还是全量微调。** 论文：patch embedding「全量」更新（1.822M）。确认上面没有 LoRA。
+5. **计算 dtype**：骨干 bf16？LoRA fp32？Autocast？没写。
+6. **训练时的梯度检查点**：没写（5B 骨干、每卡 4 个片段时这很要紧）。
+7. **用 Wan2.2 的哪一个子模型**：「低噪声 DiT 子模型」——确认是两个 Wan2.2 MoE 专家里的哪一个（`low_noise_model`）。
 
-**Decoder**
-8. **Decoder attention heads / FFN width / dropout / activation**: only $d=384$ and "four alternating layers" stated.
-9. **Initialization of decoder tokens / heads** (hand, joint, register tokens; head biases, e.g. initial depth).
-10. **Normalized-coordinate convention for the soft-argmax** ("grid-cell center coordinates in $[0,1]^2$") — inclusive endpoints or $(j+0.5)/W$?
-11. **Where the ray PE enters when there is no ray head yet / at step 0** — zero-init MLP, but the ray head is also zero-init, so both start as no-ops. Confirm.
-12. **Wrist for `direct` 3D**: the wrist-relative 3D MLP gives root-relative joints; where does the camera-frame wrist for $\mathcal{L}_{\mathrm{joint}}$ (camera-frame term) come from — MANO+τ, or a separate direct wrist head?
-13. **Existence vs visibility semantics**: which is "on-screen" and which is "exists in 3D (possibly OOS)"? Which one gates detection at 0.5?
+**解码器**
+8. **解码器的头数 / FFN 宽度 / dropout / 激活**：只写了 $d=384$ 和「四层交替」。
+9. **解码器 token / 头的初始化**（手、关节、register token；头的偏置，例如初始深度）。
+10. **soft-argmax 的归一化坐标约定**（「$[0,1]^2$ 里的格子中心坐标」）——端点包含在内，还是 $(j+0.5)/W$？
+11. **还没有射线头时 / 第 0 步，射线位置编码从哪进来**——MLP 零初始化，射线头也零初始化，所以两者起步都是空操作。需确认。
+12. **`direct` 三维的腕部**：相对腕部的三维 MLP 给出的是相对根的关节；$\mathcal{L}_{\mathrm{joint}}$ 里相机系那一项的腕部从哪来——MANO+τ，还是单独的直接腕部头？
+13. **存在性与可见性的语义**：哪个是「在画面内」，哪个是「三维上存在（可能出画）」？哪个在 0.5 处做检测门控？
 
-**Camera solver**
-14. **The K-free camera fit** (closed-form per-axis regression, variance floor $10^{-4}$, focal bracket): exact regression targets (pixel $u$ vs $\tan$ of ray) and the numeric bracket are unspecified.
-15. **$\mathcal{L}_{\mathrm{fit}}$ exact form**: "bearing error of its learned camera against the calibrated one" — over which points (all grid cells? joint anchors?) and which norm?
-16. **Fallback in K-free mode**: "wrist placed on its own inverse-projected ray at depth $\hat t_z$" — inverse-projected where? (a 2D wrist regressed by the Camera Head? the soft-argmax wrist anchor?)
-17. **Per-joint gate under fisheye** (Re:InterHand): pinhole fit fails → "reading the ray field at the anchors" — bilinear sampling?
+**相机求解器**
+14. **K-free 相机拟合**（闭式逐轴回归，方差下限 $10^{-4}$，焦距括号）：精确的回归目标（像素 $u$ 对射线的 $\tan$）和括号的数字都没写。
+15. **$\mathcal{L}_{\mathrm{fit}}$ 的精确形式**：「学到的相机相对标定相机的视线误差」——在哪些点上（全部格子？关节锚点？），用哪种范数？
+16. **K-free 模式下的回退**：「腕部放在它自己的反投影射线上，深度为 $\hat t_z$」——从哪里反投影？（相机头回归的二维腕部？soft-argmax 的腕部锚点？）
+17. **鱼眼下的逐关节门控**（Re:InterHand）：针孔拟合失败 → 「在锚点处读射线场」——是双线性采样吗？
 
-**Losses**
-18. **$\mathcal{L}_{\mathrm{img}}$ norm** ($\ell_1$? $\ell_2$?) and whether 2D targets are normalized $[0,1]$ or pixels.
-19. **$\mathcal{L}_{\mathrm{rot}}$ target for RHD** (no MANO): "rotation and shape terms are held at zero" — masked per-sample; confirm the presence/joint terms still fire.
-20. **Existence/visibility BCE targets for OOS frames**: existence=1, visibility=0? Are the FreiHAND (right-hand-only) left slots negative examples for existence?
-21. **$\mathcal{L}_{\mathrm{tmp}}$ operand**: MANO joints or direct joints? Camera-frame or root-relative? Computed at 81-frame or 21-latent rate?
-22. **$\mathcal{L}_{\mathrm{cam}}$ on OOS frames**: does the translation loss apply when the hand is out of sight (fallback branch)?
-23. **Geodesic + rotation-MSE for articulation**: per-joint mean over the 15 MANO joints, or summed?
-24. **Loss masking for the FreiHAND static 5-frame clips**: temporal loss $\mathcal{L}_{\mathrm{tmp}}$ presumably 0 there; confirm.
+**损失**
+18. **$\mathcal{L}_{\mathrm{img}}$ 的范数**（$\ell_1$？$\ell_2$？），以及二维目标是归一化的 $[0,1]$ 还是像素。
+19. **RHD 上 $\mathcal{L}_{\mathrm{rot}}$ 的目标**（没有 MANO）：「旋转和形状项保持为零」——按样本掩掉；确认存在性/关节项仍然计算。
+20. **出画帧上存在性/可见性的 BCE 目标**：存在性=1、可见性=0？FreiHAND（只有右手）的左手槽是不是存在性的负例？
+21. **$\mathcal{L}_{\mathrm{tmp}}$ 作用在什么上**：MANO 关节还是直接关节？相机系还是相对根？按 81 帧还是 21 个潜变量帧算？
+22. **出画帧上的 $\mathcal{L}_{\mathrm{cam}}$**：手出画时（走回退分支）平移损失还加不加？
+23. **关节角的测地距离 + 旋转 MSE**：对 15 个 MANO 关节取平均，还是求和？
+24. **FreiHAND 静态 5 帧片段的损失掩码**：时间损失 $\mathcal{L}_{\mathrm{tmp}}$ 在那里应当为 0；需确认。
 
-**Optimization / schedule**
-25. **AdamW betas / eps**: not stated.
-26. **Cosine decay floor** (min LR) and whether warmup is linear.
-27. **EMA of weights**: not mentioned.
-28. **Mixed precision**: not stated.
-29. **Random seed(s)**: single run each; seed unspecified (code uses `seed: 42` in inference configs).
-30. **Validation protocol during training**: "31 validation checkpoints logged between step 5k and step 20k" ⇒ eval every 500 steps; the validation set is unspecified.
+**优化 / 日程**
+25. **AdamW 的 betas / eps**：没写。
+26. **余弦衰减的下限**（最小学习率），以及预热是不是线性的。
+27. **权重 EMA**：没提。
+28. **混合精度**：没写。
+29. **随机种子**：每种设定只跑一次；种子没写（推理配置里代码用 `seed: 42`）。
+30. **训练中的验证协议**：「在第 5k 步和第 20k 步之间记录了 31 个验证 checkpoint」⇒ 每 500 步评一次；验证集没指定。
 
-**Data pipeline**
-31. **Augmentations**: none mentioned at all (flip? color jitter? crop? span-dropout exists in code).
-32. **Window sampling**: "random 21-latent-frame window ... at every step" — uniform over the recording? Must the start align to a latent boundary?
-33. **Resolutions for Re:InterHand / FreiHAND / RHD** (only ARCTIC 672×480, HOT3D 480×480, H2O/OakInk2 width 832 are stated). Image datasets: how are the 224×224 FreiHAND / 320×320 RHD images placed on a VAE-compatible (multiple-of-32) canvas, and what intrinsics are assumed?
-34. **Pseudo-GT MANO for HOI4D/H2O**: which per-frame estimator produced them?
-35. **Shared MANO format**: `flat_hand_mean=False` (HaMeR convention) vs OakInk2 `flat_hand_mean=True` — how is OakInk2 converted?
-36. **Dataset sampling**: "a dataset drawn per batch" — is the per-GPU batch of 4 clips from one dataset, and do all 16 GPUs draw the same dataset in a step?
-37. **HOT3D custom split** (126/72 recordings) and **437 evaluation segments**: IDs not released (issue #5).
-38. **OakInk2 202-segment subset** and **HOI4D 166 recordings / 498 segments**: segment definitions inherited from ViDiHand (no public release).
-39. **Evaluation code** not released (issue #6 asks how EPE2D-p penalty/gate is applied).
+**数据管线**
+31. **数据增强**：完全没提（翻转？颜色抖动？裁剪？代码里有 span-dropout）。
+32. **窗口采样**：「每一步随机抽 21 个潜变量帧的窗口」——在录像上均匀吗？起点必须对齐潜变量边界吗？
+33. **Re:InterHand / FreiHAND / RHD 的分辨率**（只写了 ARCTIC 672×480、HOT3D 480×480、H2O/OakInk2 宽 832）。图像数据集：224×224 的 FreiHAND / 320×320 的 RHD 怎么放到 VAE 能吃的（32 的倍数）画布上，内参怎么取？
+34. **HOI4D/H2O 的伪真值 MANO**：哪个逐帧估计器产生的？
+35. **统一的 MANO 格式**：`flat_hand_mean=False`（HaMeR 惯例）对 OakInk2 的 `flat_hand_mean=True`——OakInk2 怎么转？
+36. **数据集采样**：「每个 batch 抽一个数据集」——每张 GPU 上的 4 个片段是不是来自同一个数据集，同一步里 16 张 GPU 是不是抽同一个数据集？
+37. **HOT3D 自定义划分**（126/72 段录像）和 **437 个评测段**：ID 没发布（issue #5）。
+38. **OakInk2 的 202 段子集**和 **HOI4D 的 166 段录像 / 498 段**：段的定义继承自 ViDiHand（没有公开发布）。
+39. **评测代码**没发布（issue #6 问 EPE2D-p 的惩罚/门控怎么加）。
 
-**Inference**
-40. **Tiled vs full decoding at eval**: the paper decodes "21 or 22 latent frames depending on where the segment starts"; the code default is 22-latent tiles.
-41. **Resolution at inference for in-the-wild video**: code default `--encode_w 832`, snapped to multiples of 32.
+**推理**
+40. **评测时是分块解码还是整段解码**：论文按「片段从哪开始，解码 21 或 22 个潜变量帧」；代码默认是 22 个潜变量帧的分块。
+41. **野外视频的推理分辨率**：代码默认 `--encode_w 832`，对齐到 32 的倍数。

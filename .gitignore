@@ -11,3 +11,12 @@ repro/2608.20308/code/ckpt/**/*.pth
 repro/2608.20308/code/ckpt/**/*.bin
 repro/2608.20308/code/checkpoints/*.pt
 repro/2608.20308/runs/**/*.pt
+
+# Licensed MANO. Not redistributed.
+/mano_v1_2/
+
+# HOT3D-Clips tars. clip-001854.tar and clip-003366.tar exceed GitHub's 100 MB limit.
+repro/2608.20308/data/hot3d/raw/**/*.tar
+
+# editor log
+repro/2608.20308/Typora_Hook_Log.txt

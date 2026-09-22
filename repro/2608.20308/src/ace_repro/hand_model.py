@@ -97,6 +97,21 @@ def mano_available(mano_dir: str | None = None) -> bool:
             or os.path.isfile(os.path.join(d, "MANO_RIGHT.pkl")))
 
 
+def mirror_left_shapedirs(models: dict) -> None:
+    """Undo the smplx left-hand shapedirs bug (smplx issue 48).
+
+    HOT3D's ``MANOHandModel`` applies the same correction: if the left model's
+    x-component of ``shapedirs`` matches the right model, mirror it. FakeMANO
+    has no shapedirs and is left alone.
+    """
+    left, right = models.get(False), models.get(True)
+    if left is None or not hasattr(left, "shapedirs") or not hasattr(right, "shapedirs"):
+        return
+    gap = torch.sum(torch.abs(left.shapedirs[:, 0, :] - right.shapedirs[:, 0, :])).item()
+    if gap < 1.0:
+        left.shapedirs[:, 0, :] *= -1
+
+
 def build_hand_models(device: torch.device, mano_dir: str | None = None, allow_fake: bool = False):
     """Return ``({False: left, True: right}, kind)`` with kind in {"mano", "fake"}."""
     if mano_dir:
@@ -104,7 +119,9 @@ def build_hand_models(device: torch.device, mano_dir: str | None = None, allow_f
     if mano_available(mano_dir):
         import ace_ego_hand.mano_utils as mu
         mu.MANO_CHECKPOINT_DIR = mano_dir or mu.MANO_CHECKPOINT_DIR
-        return mu.setup_mano_models({}, device), "mano"
+        models = mu.setup_mano_models({}, device)
+        mirror_left_shapedirs(models)
+        return models, "mano"
     if not allow_fake:
         raise FileNotFoundError(
             f"MANO pkls not found under {mano_dir or MANO_CHECKPOINT_DIR}; register at "

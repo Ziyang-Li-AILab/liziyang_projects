@@ -12,3 +12,5 @@ GitHub 普通 git 拒绝超过 100 MB 的文件，Git LFS 也拒绝超过 2 GB �
 | `repro/2608.20308/runs/repro-main-k-debug/ckpt_*.pt` | 各 1.5 GB | 本机 debug 训练产物，不是论文权重。日志 `train_log.jsonl` / `eval_log.jsonl` 已提交 |
 
 DiT 的 `config.json`、tokenizer（`google/umt5-xxl/`）和 `README_T5_REMOVED.txt` 已提交。
+
+2026-09-22 这台 Windows 上，`Wan2.2_VAE.pth` 已经下到上面的路径，大小 2,818,839,170 字节，给 HOT3D 的 latent 编码用。`diffusion_pytorch_model.safetensors` 和两个 `ace_ego_hand_*.pt` 不在这台机器上。

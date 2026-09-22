@@ -52,7 +52,7 @@ repro/2608.20308/
         ├── camera.py                  射线、针孔拟合、投影
         ├── hand_model.py              真 MANO，或没有 pkl 时的 FakeMANO
         ├── eval/metrics.py            Appendix A.1
-        └── data/                      clip 格式、混合采样、VAE cache、FreiHAND 转换、合成数据
+        └── data/                      clip 格式、混合采样、VAE cache、FreiHAND / HOT3D 转换、合成数据
 ```
 
 权重：`code/ckpt/Wan2.2-Fun-5B-Control/` 里是 DiT（约 9.4 GB）和 VAE。umT5 大权重已删，字幕向量缓存在 `code/cache/caption_embed.pt`。论文发布的 `ace_ego_hand_k.pt` / `ace_ego_hand_kfree.pt` 不在本机。
@@ -199,7 +199,7 @@ Re:InterHand 是鱼眼。论文和代码都不在鱼眼上做针孔拟合，直�
 | FreiHAND | 14 | 静态，复制 5 帧 | 224×224 | 针孔 |
 | RHD | 14 | 静态 | 320×320 | 针孔，**没有 MANO 旋转/形状真值** |
 
-视频训练时从每条录像随机抽 21 个 latent 帧（81 个 RGB 帧）。HOI4D 不进训练，只做 zero-shot 测试。这些数据现在不在机器上。冒烟用 `data/synthetic.py`：FakeMANO 画彩色骨架，再用**真的** Wan VAE 编码。数字不能和 Table 1 比。
+视频训练时从每条录像随机抽 21 个 latent 帧（81 个 RGB 帧）。HOI4D 不进训练，只做 zero-shot 测试。这台机器上有公开 HOT3D-Clips 的一个小子集：8 段训练 tar 里，`clip-001849` … `clip-001853` 已经写成 `data/hot3d/train/*.pt`，剩下 3 段没编码。其它数据集不在。进度和没做完的部分见 `HOT3D_STATUS.md`。没有这些 `.pt` 时，冒烟用 `data/synthetic.py`：FakeMANO 画彩色骨架，再用**真的** Wan VAE 编码。数字不能和 Table 1 比。
 
 统一样本是 `schema.Clip`：latent、\(K\)、两只手的旋转/形状/平移、相机系 21 关节、归一化 2D、存在、可见、`has_mano`。约定：
 
@@ -207,7 +207,7 @@ Re:InterHand 是鱼眼。论文和代码都不在鱼眼上做针孔拟合，直�
 - `visible`：App. A.1 在画门（某个关节投影在画面内且 \(z>1\,\mathrm{cm}\)）。
 - `has_mano`：RHD 为假，旋转和 \(\beta\) 损失关掉。
 
-`data/mixture.py` 按 step 播种抽数据集，为的是多卡时每张卡选同一个数据集（RHD 不走 MANO 头，参与反传的参数必须一致）。`data/store.py` 读已经缓存好的 latent。FreiHAND 转换器在 `data/converters/freihand.py`，RGB 和 MANO pkl 到了才能跑。
+`data/mixture.py` 按 step 播种抽数据集，为的是多卡时每张卡选同一个数据集（RHD 不走 MANO 头，参与反传的参数必须一致）。`data/store.py` 读已经缓存好的 latent。FreiHAND 转换器在 `data/converters/freihand.py`，RGB 还缺，所以没跑过。HOT3D 转换器在 `data/converters/hot3d.py`，几何检查过 8 段训练 clip，VAE 编码停在 5/8。
 
 Span-dropout（把一段 latent 涂黑，逼模型从上下文补出画的手）代码钩子在 `extract_features(span_mask=...)`。论文没写数据增强。复现配置 `span_dropout: 0.0`。
 
@@ -309,7 +309,7 @@ Table 1 的点是：`noised_video` + `nv_sigma=0` + `mh_expand=false` + tap 15 +
 | Camera Head 只预测 \(\log t_z\) | 还预测腕部落点 \((u,v)\)，仅回退分支使用 | 代码补全了论文没写的回退坐标 |
 | K-free：拟合 \((\hat f,\hat c)\) 再算轴承 | 发布推理：在锚点采样射线，拟合只写进 pickle。`src` 在 `kfree: true` 时把拟合接回 PnP | 要对齐论文 K-free 表格，用 `src` 的拟合分支，并标明守卫阈值是假设 |
 | 损失八项 + K-free 的 \(\mathcal{L}_{\mathrm{fit}}\) | `src/ace_repro/losses.py` | 权重按 App. B.3；掩码是复现假设 |
-| 训练 20k step，16×A100，全局 batch 64 | `train.py` 能跑，数据不在本机 | 循环按论文；本机只跑过合成数据的 10 step 冒烟 |
+| 训练 20k step，16×A100，全局 batch 64 | `train.py` 能跑。本机只有 5 段 HOT3D `.pt`，没有 DiT 权重 | 循环按论文。这 5 段不是 Table 2 的混合，也还没拿来训练 |
 | 评测脚本和 HOT3D/OakInk2/HOI4D 的片段名单 | 指标实现了，名单没有 | 指标按 App. A.1；名单对不上就不能报 Table 1 |
 
 ---

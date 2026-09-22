@@ -1,12 +1,12 @@
-# Run plan
+# 运行计划
 
-Paper schedule (Appendix B.2): 20,000 steps, AdamW, batch 4 clips/GPU on 16 A100s (global batch 64), 81-frame windows. Main number is Table 1 on ARCTIC / HOT3D / HOI4D after that schedule.
+论文日程（附录 B.2）：20,000 步，AdamW，每张 GPU 上 4 个片段（16 张 A100，全局 batch 64），窗口 81 帧。主数字是按这个日程训完后，在 ARCTIC / HOT3D / HOI4D 上的 Table 1。
 
-| Run | Goal | Config | Status |
+| 运行 | 目标 | 配置 | 状态 |
 | --- | --- | --- | --- |
-| `repro-main-k` | Table 1, K-given | `src/configs/repro-default.yaml` | not launched |
-| `repro-main-k-debug` | Stage-4 gate: 10 iterations, then exit | same config, `--debug-mode --allow-fake-mano` | finished 2026-09-22, see `results.md` |
+| `repro-main-k` | Table 1，已知内参 K | `src/configs/repro-default.yaml` | 未启动 |
+| `repro-main-k-debug` | 第 4 阶段门槛：10 次迭代后退出 | 同一配置，`--debug-mode --allow-fake-mano` | 2026-09-22 完成，见 `results.md` |
 
-`repro-main-k` needs the Table 2 videos, FreiHAND/RHD images, and licensed MANO. None of those are on this machine, and the free disk cannot hold the latent cache. A 20k-step run here would also be a single RTX 5090 at batch 2, not 16 A100s at global batch 64.
+`repro-main-k` 需要 Table 2 的视频、FreiHAND/RHD 图像，以及有许可证的 MANO。这台机器上这些都没有，剩余磁盘也放不下 latent 缓存。在这里跑 20k 步，也只是单张 RTX 5090、batch 2，不是 16 张 A100、全局 batch 64。
 
-Smoke tiers 0–3 (stage 6) completed on the synthetic stand-in before the debug launch. Logs: `smoke_logs/tier{0,1,2,3}.log`.
+冒烟测试第 0–3 级（第 6 阶段）已在合成替身上跑完，然后才启动 debug。日志：`smoke_logs/tier{0,1,2,3}.log`。

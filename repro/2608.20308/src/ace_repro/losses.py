@@ -100,12 +100,12 @@ def compute_losses(out: dict, batch: dict, hand_models, weights: dict, *, step: 
         # -- L_pres --------------------------------------------------------
         t["presence_3d"] = F.binary_cross_entropy(p["exists_3d"].clamp(1e-5, 1 - 1e-5), m_ex)
         t["presence_2d"] = F.binary_cross_entropy(p["exists_2d"].clamp(1e-5, 1 - 1e-5), m_vis)
-        # -- L_tmp: acceleration error of camera-frame joints at 81 fps ----
+        # -- L_tmp: App. B.3 penalises ||Jhat_{t+1}-2 Jhat_t+Jhat_{t-1}||_1.
+        # The formula contains only the prediction, so this is a smoothness
+        # penalty toward zero acceleration, not a match to the GT trajectory.
         if T >= 3:
             acc_p = J_cam[:, 2:] - 2 * J_cam[:, 1:-1] + J_cam[:, :-2]
-            acc_g = J_gt[:, 2:] - 2 * J_gt[:, 1:-1] + J_gt[:, :-2]
-            m_acc = m_cam[:, 2:] * m_cam[:, 1:-1] * m_cam[:, :-2]
-            t["temporal_accel"] = masked_mean((acc_p - acc_g).abs(), m_acc)
+            t["temporal_accel"] = acc_p.abs().mean()
         else:
             t["temporal_accel"] = J_cam.sum() * 0
         # -- L_ray ---------------------------------------------------------

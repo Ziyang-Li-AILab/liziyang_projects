@@ -86,12 +86,12 @@ def main() -> None:
     opt = yaml.safe_load(open(args.opt))
     device = torch.device(args.device)
 
-    n_src = frame_count(args.video)
+    n_src = frame_count(args.video)  # 帧数统计
     if n_src <= 0:
         raise SystemExit(f"{args.video}: could not read a frame count")
-    n_frames = min(n_src, args.max_frames) if args.max_frames else n_src
-    # the causal VAE consumes 4k+1 pixel frames; trim the tail rather than pad
-    n_frames = 4 * ((n_frames - 1) // 4) + 1
+    n_frames = min(n_src, args.max_frames) if args.max_frames else n_src  # 帧数截取
+    # the causal VAE consumes 4k+1 pixel frames; trim the tail rather than pad 因果VAE需要4k+1像素帧，截取尾部
+    n_frames = 4 * ((n_frames - 1) // 4) + 1  # 帧数截取
     if n_frames < 5:
         raise SystemExit(f"{args.video}: need at least 5 frames, got {n_frames}")
 
@@ -162,7 +162,7 @@ def main() -> None:
 
     vae = load_vae(device)
     pixels = decode_video(args.video, n_frames, resize_hw=(enc_w, enc_h))
-    ctrl = encode(vae, pixels, device).float()
+    ctrl = encode(vae, pixels, device).float()  # 编码后得到的视频的latent表示
     del vae, pixels
     if device.type == "cuda":
         torch.cuda.empty_cache()

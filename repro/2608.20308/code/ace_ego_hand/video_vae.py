@@ -52,7 +52,8 @@ def frame_count(path: str) -> int:
 
 
 def load_vae(device: torch.device):
-    from videox_fun.models import AutoencoderKLWan3_8
+    # models/__init__.py is not in this checkout, so import the class module directly.
+    from videox_fun.models.wan_vae3_8 import AutoencoderKLWan3_8
     config = OmegaConf.load(str(VIDEOX_CFG))
     vae = AutoencoderKLWan3_8.from_pretrained(
         os.path.join(str(MODEL_ROOT), config["vae_kwargs"].get("vae_subpath", "vae")),

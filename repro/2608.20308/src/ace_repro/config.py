@@ -25,7 +25,7 @@ def load_config(path: str, overrides: list[str] | None = None) -> dict[str, Any]
     inference code (``GeoDitModel``) works unchanged.
     """
     path = os.path.abspath(path)
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     for ov in overrides or []:
         key, _, val = ov.partition("=")
@@ -37,7 +37,7 @@ def load_config(path: str, overrides: list[str] | None = None) -> dict[str, Any]
 
     cfg_dir = os.path.dirname(path)
     opt_path = _abspath(cfg_dir, cfg["base_options"])
-    with open(opt_path) as f:
+    with open(opt_path, encoding="utf-8") as f:
         model_opt = yaml.safe_load(f)
     for k, v in list(model_opt.get("paths", {}).items()):
         if isinstance(v, str):
@@ -54,5 +54,5 @@ def load_config(path: str, overrides: list[str] | None = None) -> dict[str, Any]
 
 def dump_config(cfg: dict[str, Any], path: str) -> None:
     c = copy.deepcopy(cfg)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         yaml.safe_dump(c, f, sort_keys=False)

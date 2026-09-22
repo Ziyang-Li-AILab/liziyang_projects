@@ -1,31 +1,31 @@
-# Reproduction results
+# 复现结果
 
-**Paper claim** (Table 1, ARCTIC, K-given ACE-Ego-Hand): F1 1.000, MPJPE-p 15.256 mm, PA-p 7.474 mm, MPJPE+OOS 16.783 mm, EPE2D-p 9.180 px, GO-p 11.807 deg, CT-p 0.021 m, Jitter 2.700.
+**论文声称**（Table 1，ARCTIC，已知 K 的 ACE-Ego-Hand）：F1 1.000，MPJPE-p 15.256 mm，PA-p 7.474 mm，MPJPE+OOS 16.783 mm，EPE2D-p 9.180 px，GO-p 11.807 deg，CT-p 0.021 m，Jitter 2.700。
 
-That row was trained for 20,000 steps on the Table 2 mixture with real MANO. It was **not** rerun here. See `dataset_substitution.md`.
+那一行是在 Table 2 的混合数据上、用真实 MANO 训练 20,000 步得到的。这里**没有**重跑。见 `dataset_substitution.md`。
 
-## What did run
+## 实际跑了什么
 
-Host: one RTX 5090 (32 GB), conda env `ace-ego-hand` (`torch 2.8.0+cu128`). Backbone load uses `low_cpu_mem_usage=True` in `code/ace_ego_hand/archs/wan_backbone.py`. The default fp32 construct plus the 9.4 GB state dict peaks near 30 GB RAM; with swap already full, the previous tier-1 attempt sat overnight and never logged a forward.
+主机：一张 RTX 5090（32 GB），conda 环境 `ace-ego-hand`（`torch 2.8.0+cu128`）。加载骨干时在 `code/ace_ego_hand/archs/wan_backbone.py` 里使用 `low_cpu_mem_usage=True`。默认的 fp32 构造加上 9.4 GB 的 state dict，内存峰值接近 30 GB；当时交换分区已经满了，上一次第 1 级尝试挂了一夜，一次前向都没记下来。
 
-| Check | Result | Evidence |
+| 检查 | 结果 | 证据 |
 | --- | --- | --- |
-| Tier 0 (VAE, camera fit, loss and metrics on GT) | pass | `smoke_logs/tier0.log` |
-| Tier 1 (train + eval forward, grads in decoder / LoRA / patch-embed) | pass, 12.3 GB peak | `smoke_logs/tier1.log`, loss 7.2576 |
-| Tier 2 (one AdamW step, same batch) | pass, 7.25764 → 6.34232 | `smoke_logs/tier2.log` |
-| Tier 3 (20 iters, 5-step rolling mean) | pass, 7.5070 → 4.2977 | `smoke_logs/tier3.log` |
-| `train.py --debug-mode` (10 steps, batch 2, synthetic) | exit 0 in 0.1 min | `runs/repro-main-k-debug/`, `smoke_logs/debug_train.log` |
+| 第 0 级（VAE、相机拟合、在真值上的损失和指标） | 通过 | `smoke_logs/tier0.log` |
+| 第 1 级（训练 + 评测前向，梯度出现在解码器 / LoRA / patch-embed） | 通过，峰值 12.3 GB | `smoke_logs/tier1.log`，损失 7.2576 |
+| 第 2 级（一步 AdamW，同一 batch） | 通过，7.25764 → 6.34232 | `smoke_logs/tier2.log` |
+| 第 3 级（20 次迭代，5 步滚动均值） | 通过，7.5070 → 4.2977 | `smoke_logs/tier3.log` |
+| `train.py --debug-mode`（10 步，batch 2，合成数据） | 0.1 分钟内退出码 0 | `runs/repro-main-k-debug/`，`smoke_logs/debug_train.log` |
 
-Step 1 gradient norm is ~3.3e9 (untrained decoder). `grad_clip: 1.0` brings it to 137 at step 2 and 8.0 at step 10. Loss on the synthetic mixture goes 6.874 → 5.198 over those 10 steps.
+第 1 步的梯度范数约 3.3e9（解码器尚未训练）。`grad_clip: 1.0` 把它压到第 2 步的 137、第 10 步的 8.0。合成混合上的损失在这 10 步里从 6.874 降到 5.198。
 
-Debug eval at step 10 (`hand_model=fake`, 8 synthetic val clips): FAcc 0.030, Recall 0.000, F1 0.000, MPJPE-p 189.799, PA-p 13.625, EPE2D-p 678.823, GO-p 129.865, CT-p 0.537, Jitter NaN (no matched run of ≥3 frames), MPJPE+OOS 175.048.
+第 10 步的 debug 评测（`hand_model=fake`，8 段合成验证片段）：FAcc 0.030，Recall 0.000，F1 0.000，MPJPE-p 189.799，PA-p 13.625，EPE2D-p 678.823，GO-p 129.865，CT-p 0.537，Jitter 为 NaN（没有长度 ≥3 帧的匹配轨迹），MPJPE+OOS 175.048。
 
-## Verdict
+## 结论
 
-**[gap, hypothesis: this eval is not the paper's experiment]** for every Table 1 metric.
+对 Table 1 的每一项指标，判定都是：**[缺口，假设：这次评测不是论文的实验]**。
 
-The 189.8 mm MPJPE-p is the missed-hand penalty on skeleton clips after 10 steps with FakeMANO (Recall 0). It is not an ARCTIC measurement and is not evidence that the paper's 15.256 mm is wrong. A comparable number needs the Table 2 recordings, FreiHAND/RHD images, MANO pkls, and the 20,000-step schedule.
+189.8 mm 的 MPJPE-p，是用 FakeMANO 训练 10 步后，在骨架片段上对漏检手的惩罚（Recall 为 0）。它不是 ARCTIC 上的测量，也不能用来说明论文的 15.256 mm 是错的。要得到可比较的数字，需要 Table 2 的录像、FreiHAND/RHD 图像、MANO pkl，以及 20,000 步的日程。
 
-Checkpoints from the debug run: `runs/repro-main-k-debug/ckpt_last.pt` and `ckpt_step000010.pt` (1.5 GB each). They are not paper weights.
+debug 运行的 checkpoint：`runs/repro-main-k-debug/ckpt_last.pt` 和 `ckpt_step000010.pt`（各 1.5 GB）。它们不是论文权重。
 
-Gap table and the round-trip check remain `gaps_filled.md` and `roundtrip_check.txt`. Smoke followed reproduce stage 6. No paper-scale launch was started, so there is no same-step comparison against Table 1.
+缺口表和往返核对仍是 `gaps_filled.md` 与 `roundtrip_check.txt`。冒烟测试按复现流程的第 6 阶段做完。没有启动论文规模的训练，因此没有和 Table 1 的同一步数对照。
