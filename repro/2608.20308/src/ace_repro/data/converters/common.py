@@ -65,7 +65,10 @@ def mano_joints_cam(hand_models, go: torch.Tensor, hp: torch.Tensor, betas: torc
     T = go.shape[0]
     out = torch.zeros(T, 2, 21, 3)
     for s in range(2):
-        j, _ = mano_forward_batch_full(go[:, s], hp[:, s], betas[s].expand(T, 10), hand_models[bool(s)])
+        model = hand_models[bool(s)]
+        dev = next(model.parameters()).device
+        j, _ = mano_forward_batch_full(
+            go[:, s].to(dev), hp[:, s].to(dev), betas[s].expand(T, 10).to(dev), model)
         out[:, s] = j.cpu() + trans[:, s, None]
     return out
 

@@ -4,19 +4,25 @@ __pycache__/
 *.egg-info/
 .DS_Store
 
-# GitHub rejects git blobs over 100 MB, and any file over 2 GB even with LFS.
-# These local weights stay on disk; see WEIGHTS.md for how to fetch them again.
+# Datasets stay on disk. Layout and download commands: DATA.md
+repro/2608.20308/data/
+
+# Licensed MANO. Not redistributed.
+repro/2608.20308/code/data/mano/
+/mano_v1_2/
+
+# Weights over GitHub's limit. See WEIGHTS.md.
 repro/2608.20308/code/ckpt/**/*.safetensors
 repro/2608.20308/code/ckpt/**/*.pth
 repro/2608.20308/code/ckpt/**/*.bin
 repro/2608.20308/code/checkpoints/*.pt
-repro/2608.20308/runs/**/*.pt
+repro/2608.20308/runs/
 
-# Licensed MANO. Not redistributed.
-/mano_v1_2/
+# Local download / smoke logs
+repro/2608.20308/code/logs/
+repro/2608.20308/smoke_logs/
 
-# HOT3D-Clips tars. clip-001854.tar and clip-003366.tar exceed GitHub's 100 MB limit.
-repro/2608.20308/data/hot3d/raw/**/*.tar
-
-# editor log
-repro/2608.20308/Typora_Hook_Log.txt
+# The paper PDF, LaTeX, and the full pandoc dump stay local.
+repro/2608.20308/pdf/
+repro/2608.20308/source/
+repro/2608.20308/2608.20308.md

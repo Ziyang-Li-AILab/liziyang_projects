@@ -12,6 +12,7 @@
 
 - 论文附录 A.2：HOT3D 用 480×480、30 fps、81 帧 RGB（因果 VAE 的 4k+1，对应 21 个潜变量帧）。对角线 679 px 就是 \(\sqrt{480^2+480^2}\)。
 - 输入是 Aria RGB 流 `214-1`，1408×1408，`FISHEYE624`。按 `hand_tracking_toolkit` 的 `convert_to_pinhole_camera(focal_scale=1)` 去畸变。论文没写这个比例，用的是工具包默认值 1。`clip-001849` 上 162 只手的手腕有 150 只落在针孔画面里，其余只是略微出画。
+- 去畸变之后再顺时针转 90°，连同 K、全局朝向和相机系平移一起转。Aria 传感器图的 x 轴在头戴视角里朝上，发布权重训练的是正立自我视角（手从画面下方进入，和 ARCTIC 同一种构图）。只转像素、不转相机，标注会离开手；只去畸变、不转正，几何自洽但推理对不齐。平移不是把 `t` 乘上旋转：smplx 绕静止手腕 `J0` 转，存的是减去 `J0` 之后的残差，所以 `t' = R t + R J0 - J0`。`meta["upright"]` 必须是 `cw90`，否则转换器会重写这份 `.pt`。`clip-001849.pt` 已按这个朝向重编码。`clip-001850` … `clip-001853` 的 tar 不在本机，还是传感器朝向，tar 回来再跑会重写。
 - MANO `thetas` 是 15 维 PCA。这台环境的 smplx 0.1.28 默认 `flat_hand_mean=False`，和仓库里 Hot3D 的约定一致。轴角残差是 `thetas @ hands_components[:15]`，模型自己加 `hands_mean`。
 - `wrist_xform` 是世界系轴角加平移。写进 clip 的相机系平移是 `tau = R_wc.T @ (J0 + t_world - t_cam) - J0`。smplx 的根平移列是形状化之后的静止手腕 `J0`，漏掉 `J0` 会留下大约 115 mm 的常数偏差。
 - 左手 `shapedirs` 的 x 分量按 smplx issue 48 / HOT3D `MANOHandModel` 做了镜像，加在 `build_hand_models` 里，训练和转换用的是同一个模型。
@@ -24,7 +25,7 @@
 | --- | --- |
 | `latent` | `(48, 21, 30, 30)` float16 |
 | `n_video_frames` | 81 |
-| `K` | `[207.90, 207.90, 241.19, 239.43, 480, 480]` |
+| `K` | `[207.90, 207.90, 240.23, 241.19, 480, 480]`（正立之后；主点相对传感器朝向对调过） |
 | `go` / `hp` | `(81, 2, 3, 3)` / `(81, 2, 15, 3, 3)`，行列式为 1 |
 | `exists` / `has_mano` | 162 / 162（双手、每一帧） |
 | `visible` | 162（至少有一个关节在画面内） |
@@ -43,7 +44,7 @@
 - `data/hot3d/train/clip-001855.pt`
 - `data/hot3d/train/clip-001856.pt`
 
-已经存在的 `.pt` 再跑会跳过。在 `src/` 下：
+`meta["upright"]` 不是 `cw90` 的 `.pt` 再跑会被重写。在 `src/` 下：
 
 ```
 python -m ace_repro.data.converters.hot3d --raw ../data/hot3d/raw --out ../data/hot3d
@@ -54,7 +55,7 @@ python -m ace_repro.data.converters.hot3d --raw ../data/hot3d/raw --out ../data/
 还没做、也不要当成已经对齐论文的：
 
 - 没有用这 5 段跑过 `train.py`。DiT 权重 `diffusion_pytorch_model.safetensors` 这台机器上没有，正式训练起不来。有 HOT3D 的 `.pt` 时，`build_sources` 会把它算进混合；其它数据源仍然空着，验证仍然只看 `data/arctic/test/`。
-- 没有导出 `infer_video.py` 要的去畸变针孔 mp4 和相机 JSON。推理入口不读 tar，也不读 `.pt`。
+- `infer_video.py` 不读 tar，也不读 `.pt`。给它的 mp4 必须是同一套正立针孔。转换器 `--video-dir` 写出的就是这份图；单独拿去畸变表再 `remap`、不调用 `rotate_to_upright`，会回到传感器朝向，发布权重对不齐。
 - 每段公开 clip 有 150 帧，转换只用前 81 帧（论文的一个窗口，也是 VAE 的一整块）。`ClipStore` 看到潜变量时间长度 ≤ 21 就整段返回，不会再切窗。
 - 这 8 段都是同一条录像 `P0001_23fa0ee8` 的连续窗口，只够冒烟，不够当多样本的 HOT3D。
 - 论文的 126/72 录像划分和 437 个评测段编号没有公开。这里用的是官方 HOT3D-Clips 划分，不能拿来对 Table 1。

@@ -12,6 +12,14 @@ so only clips that still have MANO poses are written.
 
 Undistort follows ``hand_tracking_toolkit`` / ``clip_util.convert_to_pinhole_camera``
 with ``focal_scale=1`` (the toolkit default; the paper does not name another).
+The fisheye JPEG is in the Aria sensor orientation: its x-axis points up in the
+head-mounted view. After undistort the pinhole image is rotated 90° clockwise
+into the upright ego frame the released weights were trained on (hands enter
+from the bottom, same layout as ARCTIC). The camera frame rotates with the
+pixels, so the projected hands stay on the image. Skipping this rotation leaves
+a self-consistent clip whose hands sit on the wrong side of the frame; K-free
+inference then misses both hands (measured on clip-001849: mean joint error
+0.36 of the image, versus 0.018 after the rotation).
 MANO ``thetas`` are 15 PCA coefficients. smplx 0.1.28 (and this repo's MANO
 loader) use ``flat_hand_mean=False``, so the axis-angle residual is
 ``thetas @ hands_components[:15]`` and the model adds ``hands_mean``.
@@ -22,8 +30,9 @@ so a rigid change of camera does not move ``J0`` by itself.
 
     python -m ace_repro.data.converters.hot3d --raw ../data/hot3d/raw --out ../data/hot3d
 
-An output ``.pt`` that already exists is left alone, so a rerun only encodes
-the clips that are still missing.
+An output ``.pt`` is rewritten unless its ``meta["upright"]`` is already
+``cw90``. Clips encoded before that rotation are the sensor orientation and
+must not be reused.
 """
 from __future__ import annotations
 
@@ -48,6 +57,12 @@ TARGET_W = 480              # paper App. A.2; diagonal is 679 px
 FOCAL_SCALE = 1.0           # clip_util.convert_to_pinhole_camera default
 N_PCA = 15
 _EPS = np.float32(2.0 ** -128)
+# Old camera coordinates -> upright camera. Image clockwise 90°:
+# new X = -old Y, new Y = old X, new Z = old Z.
+_SENSOR_TO_UPRIGHT = np.array([[0.0, -1.0, 0.0],
+                               [1.0, 0.0, 0.0],
+                               [0.0, 0.0, 1.0]], dtype=np.float64)
+UPRIGHT = "cw90"
 
 
 def quat_wxyz_to_mat(q) -> np.ndarray:
@@ -111,6 +126,37 @@ def undistort_map(h: int, w: int, f: float, cxy, coeff, focal_scale: float):
     return pix[..., 0].astype(np.float32), pix[..., 1].astype(np.float32), K
 
 
+def rotate_to_upright(frames: np.ndarray, K: np.ndarray, go_aa: np.ndarray,
+                      trans: np.ndarray, J0: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Sensor-frame pinhole clip -> upright ego frame (image clockwise 90°).
+
+    ``frames`` is (T, H, W, 3). ``K`` is the 3x3 pinhole at that resolution.
+    ``go_aa`` (T, 2, 3) and ``trans`` (T, 2, 3) are camera-frame MANO.
+    ``J0`` (2, 3) is the shaped rest-pose wrist of each hand. smplx rotates
+    the bones around ``J0`` and the stored translation is the residual after
+    subtracting it, so a rigid camera change is
+
+        R' = R_up @ R,   t' = R_up @ t + R_up @ J0 - J0
+
+    and not ``t' = R_up @ t``. With that, a point that projected to (u, v)
+    projects to (H-1-v, u).
+    """
+    T, H, W = frames.shape[:3]
+    upright = np.ascontiguousarray(np.rot90(frames, k=-1, axes=(1, 2)))
+    fx, fy = float(K[0, 0]), float(K[1, 1])
+    cx, cy = float(K[0, 2]), float(K[1, 2])
+    K_up = np.array([[fy, 0.0, (H - 1) - cy],
+                     [0.0, fx, cx],
+                     [0.0, 0.0, 1.0]], dtype=np.float64)
+    R_up = torch.tensor(_SENSOR_TO_UPRIGHT, dtype=torch.float32)
+    Rc = axis_angle_to_matrix(torch.as_tensor(go_aa, dtype=torch.float32))
+    go_up = rotmat_to_axis_angle((R_up @ Rc).reshape(-1, 3, 3)).reshape(T, 2, 3)
+    J = torch.as_tensor(J0, dtype=torch.float32)
+    t = torch.as_tensor(trans, dtype=torch.float32)
+    t_up = t @ R_up.T + (J @ R_up.T - J)
+    return upright, K_up, go_up.numpy().astype(np.float32), t_up.numpy().astype(np.float32)
+
+
 def _jpeg(blob: bytes) -> np.ndarray:
     bgr = cv2.imdecode(np.frombuffer(blob, np.uint8), cv2.IMREAD_COLOR)
     if bgr is None:
@@ -132,7 +178,9 @@ def _components(mano_root: str) -> dict[bool, np.ndarray]:
 
 def _rest_wrist(model, betas: torch.Tensor) -> np.ndarray:
     """Shaped rest-pose wrist. Pose does not move it (smplx root translation is ``J0``)."""
-    z3, z45 = torch.zeros(1, 3), torch.zeros(1, 45)
+    dev = next(model.parameters()).device
+    betas = betas.to(dev)
+    z3, z45 = torch.zeros(1, 3, device=dev), torch.zeros(1, 45, device=dev)
     joints = model(betas=betas[None], global_orient=z3, hand_pose=z45, transl=z3).joints
     return joints[0, 0].detach().cpu().numpy().astype(np.float32)
 
@@ -232,21 +280,37 @@ def convert_tar(path: str, hand_models, comps, n_frames: int, focal_scale: float
                 checked = True
         warped = np.stack([cv2.remap(frames[t], map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
                            for t in range(T)])
+        J0_lr = np.stack([J0[False], J0[True]]).astype(np.float32)
+        warped, K, go, trans = rotate_to_upright(warped, K, go, trans, J0_lr)
     finally:
         tar.close()
     return {
         "frames": warped, "K": K, "go": go, "hp": hp, "betas": np.stack([betas_np, betas_np]),
         "trans": trans, "exists": exists, "checked": checked,
         "meta": {"sequence": info.get("sequence_id"), "participant": info.get("participant_id"),
-                 "stream": STREAM, "focal_scale": focal_scale, "src": os.path.basename(path)},
+                 "stream": STREAM, "focal_scale": focal_scale, "src": os.path.basename(path),
+                 "upright": UPRIGHT},
     }
 
 
 def _joints_cam(model, go_aa, residual, betas, tau) -> np.ndarray:
-    go = axis_angle_to_matrix(torch.tensor(go_aa)[None])
-    hp = axis_angle_to_matrix(torch.tensor(residual, dtype=torch.float32).reshape(1, 15, 3))
-    joints, _ = mano_forward_batch_full(go, hp, betas[None], model)
+    dev = next(model.parameters()).device
+    go = axis_angle_to_matrix(torch.tensor(go_aa, device=dev)[None])
+    hp = axis_angle_to_matrix(torch.tensor(residual, dtype=torch.float32, device=dev).reshape(1, 15, 3))
+    joints, _ = mano_forward_batch_full(go, hp, betas[None].to(dev), model)
     return (joints[0].detach().cpu().numpy() + tau).astype(np.float32)
+
+
+def _write_upright_video(path: str, frames_rgb: np.ndarray, fps: float = 30.0) -> None:
+    """``frames_rgb`` is (T, H, W, 3) uint8, already rotated by ``rotate_to_upright``."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    h, w = frames_rgb.shape[1:3]
+    writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+    if not writer.isOpened():
+        raise RuntimeError(f"failed to open {path}")
+    for frame in frames_rgb:
+        writer.write(np.ascontiguousarray(frame[:, :, ::-1]))
+    writer.release()
 
 
 def _tars(raw: str) -> list[tuple[str, str]]:
@@ -270,6 +334,8 @@ def main():
     ap.add_argument("--limit", type=int, default=None, help="convert at most this many clips that have MANO")
     ap.add_argument("--focal-scale", type=float, default=FOCAL_SCALE)
     ap.add_argument("--check-only", action="store_true", help="validate projection, do not VAE-encode")
+    ap.add_argument("--video-dir", default=None,
+                    help="also write the upright pinhole mp4 (30 fps) here; same frames the .pt encodes")
     args = ap.parse_args()
     if args.frames % 4 != 1:
         raise SystemExit(f"--frames must be 4k+1 for the causal VAE, got {args.frames}")
@@ -297,15 +363,20 @@ def main():
         clip_id = os.path.splitext(os.path.basename(path))[0]
         dest = os.path.join(args.out, split, f"{clip_id}.pt")
         if not args.check_only and os.path.isfile(dest):
-            print(f"[hot3d] skip {clip_id}: already written")
-            n_ok += 1
-            continue
+            old = torch.load(dest, map_location="cpu", weights_only=False)
+            if isinstance(old, dict) and (old.get("meta") or {}).get("upright") == UPRIGHT:
+                print(f"[hot3d] skip {clip_id}: already written")
+                n_ok += 1
+                continue
+            print(f"[hot3d] {clip_id}: sensor-orientation clip, rewriting upright")
         packed = convert_tar(path, hand_models, comps, args.frames, args.focal_scale)
         if not packed:
             print(f"[hot3d] skip {clip_id}: no public MANO pose")
             continue
         tag = "box-ok" if packed["checked"] else "no-visible-hand"
         print(f"[hot3d] {clip_id} {split} {tag} exists={int(packed['exists'].sum())}", flush=True)
+        if args.video_dir:
+            _write_upright_video(os.path.join(args.video_dir, f"{clip_id}.mp4"), packed["frames"])
         if args.check_only:
             n_ok += 1
             continue

@@ -97,19 +97,34 @@ def mano_available(mano_dir: str | None = None) -> bool:
             or os.path.isfile(os.path.join(d, "MANO_RIGHT.pkl")))
 
 
+def _shapedir_x_gap(models: dict) -> float | None:
+    left, right = models.get(False), models.get(True)
+    if left is None or not hasattr(left, "shapedirs") or not hasattr(right, "shapedirs"):
+        return None
+    return torch.sum(torch.abs(left.shapedirs[:, 0, :] - right.shapedirs[:, 0, :])).item()
+
+
 def mirror_left_shapedirs(models: dict) -> None:
     """Undo the smplx left-hand shapedirs bug (smplx issue 48).
 
     HOT3D's ``MANOHandModel`` applies the same correction: if the left model's
     x-component of ``shapedirs`` matches the right model, mirror it. FakeMANO
-    has no shapedirs and is left alone.
+    has no shapedirs and is left alone. ARCTIC was fit in the uncorrected
+    space; call ``restore_smplx_left_shapedirs`` for those parameters.
     """
-    left, right = models.get(False), models.get(True)
-    if left is None or not hasattr(left, "shapedirs") or not hasattr(right, "shapedirs"):
-        return
-    gap = torch.sum(torch.abs(left.shapedirs[:, 0, :] - right.shapedirs[:, 0, :])).item()
-    if gap < 1.0:
-        left.shapedirs[:, 0, :] *= -1
+    if (gap := _shapedir_x_gap(models)) is not None and gap < 1.0:
+        models[False].shapedirs[:, 0, :] *= -1
+
+
+def restore_smplx_left_shapedirs(models: dict) -> None:
+    """Back to the smplx default left shapedirs.
+
+    ARCTIC's authors fit the raw MANO in that space and did not rerun MoSh
+    after smplx issue 48. Drawing those parameters through the HOT3D mirror
+    lifts the left fingertips off the hand.
+    """
+    if (gap := _shapedir_x_gap(models)) is not None and gap >= 1.0:
+        models[False].shapedirs[:, 0, :] *= -1
 
 
 def build_hand_models(device: torch.device, mano_dir: str | None = None, allow_fake: bool = False):

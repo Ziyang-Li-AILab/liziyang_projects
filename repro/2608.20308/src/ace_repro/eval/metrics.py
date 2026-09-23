@@ -82,13 +82,20 @@ class SegmentScorer:
                       for s in (0, 1)}                                     # canonical placeholder joints
 
     @torch.no_grad()
-    def add_segment(self, pred: dict, gt: dict, K: torch.Tensor) -> None:
-        """pred/gt tensors of one clip: (T,2,...) as in ace_repro.data.schema; K (6,)."""
+    def add_segment(self, pred: dict, gt: dict, K: torch.Tensor, pred_K: torch.Tensor | None = None) -> None:
+        """pred/gt tensors of one clip: (T,2,...) as in ace_repro.data.schema; K (6,).
+
+        ``pred_K`` projects the prediction only. K-free passes the fitted camera
+        so the 2D score matches the mesh drawn without the ground-truth K.
+        Ground truth stays on ``K``, the camera that made the image.
+        """
         T = gt["joints_cam"].shape[0]
         dev = K.device
+        K_pred = K if pred_K is None else pred_K.to(dev)
         W, H = float(K[4]), float(K[5])
+        Wp, Hp = float(K_pred[4]), float(K_pred[5])
         diag = math.hypot(W, H)
-        Kb = K[None]
+        Kb, Kpb = K[None], K_pred[None]
         matched = torch.zeros(T, 2, dtype=torch.bool)
         active_all = torch.zeros(T, 2, dtype=torch.bool)
         Jp_cam_all = torch.zeros(T, 2, 21, 3, device=dev)
@@ -102,11 +109,11 @@ class SegmentScorer:
             if gt["has_mano"][:, s].any():
                 Jg_c, Vg_c = _mano(self.hm, gt["go"][:, s], gt["hp"][:, s], gt["betas"][s][None].expand(T, 10), s)
                 Vg_cam = Vg_c + gt["trans"][:, s].float()[:, None]
-            p2d_pred_px = project(Jp_cam[None], Kb)[0] * torch.tensor([W, H], device=dev)
-            v2d_pred_px = project(Vp_cam[None], Kb)[0] * torch.tensor([W, H], device=dev)
+            p2d_pred_px = project(Jp_cam[None], Kpb)[0] * torch.tensor([Wp, Hp], device=dev)
+            v2d_pred_px = project(Vp_cam[None], Kpb)[0] * torch.tensor([Wp, Hp], device=dev)
             # "on-screen gate applied to both sides": an active prediction must itself
             # project inside the frame (any joint, z > 1 cm) to enter detection scoring.
-            p_norm = project(Jp_cam[None], Kb)[0]
+            p_norm = project(Jp_cam[None], Kpb)[0]
             p_on = ((p_norm[..., 0] >= 0) & (p_norm[..., 0] < 1) & (p_norm[..., 1] >= 0) & (p_norm[..., 1] < 1)
                     & (Jp_cam[..., 2] > 0.01)).any(-1)
             active = (pred["exists_3d"][:, s] > 0.5) & p_on

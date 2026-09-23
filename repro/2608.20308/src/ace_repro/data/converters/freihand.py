@@ -50,9 +50,10 @@ def resolve_convention(hand_models, mano61: np.ndarray, xyz: np.ndarray, n: int 
         art = pose[:, 3:].clone()
         if flat:
             art = art - hm.reshape(1, 45).cpu()
-        go = axis_angle_to_matrix(pose[:, :3])
-        hp = axis_angle_to_matrix(art.reshape(-1, 15, 3))
-        j, _ = mano_forward_batch_full(go, hp, betas, hand_models[True])
+        dev = next(hand_models[True].parameters()).device
+        go = axis_angle_to_matrix(pose[:, :3].to(dev))
+        hp = axis_angle_to_matrix(art.reshape(-1, 15, 3).to(dev))
+        j, _ = mano_forward_batch_full(go, hp, betas.to(dev), hand_models[True])
         j = j.cpu()
         errs[flat] = float(((j - j[:, :1]) - (gt - gt[:, :1])).norm(dim=-1).mean()) * 1000
     print(f"[freihand] wrist-aligned residual vs xyz: flat_hand_mean=False {errs[False]:.2f} mm, "
@@ -85,6 +86,11 @@ def main():
     n_ok = 0
     for i in ids:
         u = i % N_UNIQUE
+        split = "test" if args.val_every and (u % args.val_every == 0) else "train"
+        dest = os.path.join(args.out, split, f"freihand_{i:08d}.pt")
+        if os.path.isfile(dest):
+            n_ok += 1
+            continue
         img = cv2.imread(os.path.join(rgb_dir, f"{i:08d}.jpg"))[:, :, ::-1]
         frames = np.repeat(img[None], STATIC_T, axis=0)
         xyz = xyz_all[u]                                                # (21,3) right hand
@@ -96,9 +102,13 @@ def main():
         if kind == "mano":
             pose, betas = mano_all[u, :48], mano_all[u, 48:58]
             art = pose[3:].copy()
-            go = axis_angle_to_matrix(torch.tensor(pose[None, :3]))
-            hp = axis_angle_to_matrix(torch.tensor(art.reshape(1, 15, 3)) - (hand_models[True].hands_mean.reshape(1, 15, 3).cpu() if flat else 0))
-            j, _ = mano_forward_batch_full(go, hp, torch.tensor(betas[None]), hand_models[True])
+            dev = next(hand_models[True].parameters()).device
+            go = axis_angle_to_matrix(torch.tensor(pose[None, :3], device=dev))
+            art_t = torch.tensor(art.reshape(1, 15, 3), device=dev)
+            if flat:
+                art_t = art_t - hand_models[True].hands_mean.reshape(1, 15, 3)
+            hp = axis_angle_to_matrix(art_t)
+            j, _ = mano_forward_batch_full(go, hp, torch.tensor(betas[None], device=dev), hand_models[True])
             tau = xyz[0] - j[0, 0].cpu().numpy()                       # wrist-align MANO to xyz
             go_aa = np.zeros((STATIC_T, 2, 3), np.float32)
             hp_aa = np.zeros((STATIC_T, 2, 45), np.float32)
@@ -112,8 +122,7 @@ def main():
         clip = build_clip(dataset="freihand", clip_id=f"freihand_{i:08d}", frames_u8=frames, K3=K_all[u],
                           target_w=None, enc=enc, hand_models=hand_models, exists=exists, joints_cam=jc,
                           is_static=True, meta={"unique_id": int(u)}, **kw)
-        split = "test" if (u % args.val_every == 0) else "train"
-        save_clip(clip, os.path.join(args.out, split, f"{clip.clip_id}.pt"))
+        save_clip(clip, dest)
         n_ok += 1
         if n_ok % 500 == 0:
             print(f"  {n_ok}/{len(ids)}", flush=True)

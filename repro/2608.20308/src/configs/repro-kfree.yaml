@@ -1,0 +1,88 @@
+# ACE-Ego-Hand reproduction — main K-given run.
+# Contract with gaps_filled.md: every value below carries its provenance tag
+# (section letter of gaps_filled.md + paper section / code path).
+name: repro-kfree
+seed: 42                                   # [I] paper silent -> fixed for reproducibility
+
+# Model architecture is taken verbatim from the released inference options
+# (paths.*, backbone.*, projector.*), see code/options/ace_ego_hand_k.yml.
+# Paths inside it are resolved relative to the code/ directory.
+base_options: ../../code/options/ace_ego_hand_kfree.yml   # [A,B,C] code:options/
+kfree: true                                           # ray-mode + fitted camera (§3.5)
+
+# Extra runtime paths (relative to code/ unless absolute).
+paths:
+  mano_dir: data/mano                    # licensed MANO pkls (README) -> ACE_EGO_HAND_MANO_DIR
+  out_root: ../runs                      # run dirs: <out_root>/<name>/
+  data_root: ../data                     # dataset root (see dataset.md)
+  latent_cache: ../data/latents          # VAE latents are precomputed & cached [J]
+
+data:
+  # FreiHAND only. The paper mixture is Table 2; this run is the one public
+  # source under 100GB whose converter already exists. Weight is unused when
+  # it is the only source that has clips.
+  sources:
+    freihand:    {weight: 14, kind: static, res: [224, 224], mano: true,  camera: pinhole}
+  video_frames: 81                       # [E] 81 RGB frames -> 21 latent frames (§3.2/§4)
+  static_frames: 5                       # [E] single image replicated to 5 frames -> 2 latent frames (§4)
+  span_dropout: 0.0                      # [G] span_mask augmentation OFF (not in paper)
+  num_workers: 4
+  # Smoke / debug data: procedural clips rendered from a hand model, encoded with the real VAE
+  synthetic:
+    n_train: 64
+    n_val: 8
+    res: [480, 480]                      # HOT3D-like square intrinsics
+    video_frames: 21                     # shorter clips for the smoke tiers (6 latent frames)
+
+batch:
+  clips_per_gpu: 4                       # [E] App. B.2
+  gpus: 16                               # [E] paper: 16xA100 -> global 64 clips
+  grad_accum: 1                          # increase on 1 GPU to emulate the global batch (see run_plan.md)
+
+optimizer:                               # [D] App. B.2
+  name: AdamW
+  lr_decoder: 2.0e-4                     # decoder + ray head + presence heads (+ diffusion head)
+  lr_lora: 1.0e-4                        # LoRA A/B on q,k,v,o,ffn.0,ffn.2 of all 30 blocks
+  lr_patch_embed: 2.0e-5                 # 148-ch patch_embedding (fp32)
+  weight_decay: 0.01
+  betas: [0.9, 0.999]                    # [guess] torch default, paper silent
+  eps: 1.0e-8                            # [guess] torch default
+  grad_clip: 1.0
+
+schedule:                                # [F] App. B.2
+  total_steps: 20000
+  warmup_steps: 200
+  warmup_type: linear
+  decay: cosine
+  min_lr_ratio: 0.0                      # [guess] paper: "cosine decay", floor unspecified
+  fit_warmup_steps: 500                  # L_fit off for the first 500 steps (K-free only)
+  log_every: 10
+  eval_every: 500
+  save_every: 500
+
+loss:                                    # [H] App. B.3 weights, Eq. 6 routing
+  rot_geodesic: 1.0
+  rot_mse: 1.0
+  betas_l1: 0.1
+  joint_rootrel: 10.0
+  joint_cam: 5.0
+  wrist_cam: 2.0
+  img_joints2d: 1.0
+  img_reproj: 1.0
+  img_wrist2d: 0.5
+  cam_trans: 1.0
+  presence_3d: 0.5
+  presence_2d: 0.25
+  temporal_accel: 0.5
+  ray_cosine: 1.0
+  fit_bearing: 0.0                       # K-free config sets 5.0
+  # diffusion (D-mode) auxiliary branch is NOT reproduced (paper: no ablation value, code absent) [gap]
+
+precision:
+  backbone_dtype: bfloat16               # [J] backbone frozen weights in bf16; LoRA/patch-embed fp32
+  autocast: bfloat16
+
+eval:                                    # [K] App. A.1
+  penalty_mm: 1000.0                     # missed-hand penalty for -p metrics
+  jitter_fps: 30
+  pa_align: procrustes                   # PA-MPJPE via similarity Procrustes (scale+rot+trans)
